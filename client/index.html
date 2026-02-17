@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vobiz SDK Example</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <img src="logo.png" alt="Vobiz" class="logo-img">
+                <span class="logo-sub">Client Example</span>
+            </div>
+            <div class="connection-status" id="connectionStatus">
+                <span class="status-dot offline"></span>
+                <span class="status-text">Disconnected</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Login Panel -->
+            <section class="panel login-panel" id="loginPanel">
+                <div class="panel-header">
+                    <h2>🔐 Authentication</h2>
+                    <p class="panel-desc">Enter your Vobiz endpoint credentials</p>
+                </div>
+                <div class="form-group">
+                    <label for="username">Endpoint Username</label>
+                    <input type="text" id="username" placeholder="e.g. user123456789" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="password">Endpoint Password</label>
+                    <input type="password" id="password" placeholder="Enter password" autocomplete="off">
+                </div>
+                <button class="btn btn-primary btn-block" id="loginBtn" onclick="doLogin()">
+                    <span class="btn-text">Connect & Register</span>
+                    <span class="btn-loader" style="display:none"></span>
+                </button>
+                <button class="btn btn-danger btn-block" id="logoutBtn" onclick="doLogout()" style="display:none">
+                    Disconnect
+                </button>
+            </section>
+
+            <!-- Dialer Panel -->
+            <section class="panel dialer-panel" id="dialerPanel">
+                <div class="panel-header">
+                    <h2>📞 Dialer</h2>
+                    <p class="panel-desc">Make outbound calls</p>
+                </div>
+                <div class="form-group">
+                    <label for="destination">Destination Number</label>
+                    <input type="text" id="destination" placeholder="e.g. +919876543210">
+                </div>
+
+                <!-- Keypad -->
+                <div class="keypad" id="keypad">
+                    <button class="key" onclick="pressKey('1')">1</button>
+                    <button class="key" onclick="pressKey('2')">2<small>ABC</small></button>
+                    <button class="key" onclick="pressKey('3')">3<small>DEF</small></button>
+                    <button class="key" onclick="pressKey('4')">4<small>GHI</small></button>
+                    <button class="key" onclick="pressKey('5')">5<small>JKL</small></button>
+                    <button class="key" onclick="pressKey('6')">6<small>MNO</small></button>
+                    <button class="key" onclick="pressKey('7')">7<small>PQRS</small></button>
+                    <button class="key" onclick="pressKey('8')">8<small>TUV</small></button>
+                    <button class="key" onclick="pressKey('9')">9<small>WXYZ</small></button>
+                    <button class="key" onclick="pressKey('*')">*</button>
+                    <button class="key" onclick="pressKey('0')">0<small>+</small></button>
+                    <button class="key" onclick="pressKey('#')">#</button>
+                </div>
+
+                <div class="call-actions">
+                    <button class="btn btn-call" id="callBtn" onclick="doCall()">Call</button>
+                    <button class="btn btn-hangup" id="hangupBtn" onclick="doHangup()"
+                        style="display:none">Hangup</button>
+                    <button class="btn btn-answer" id="answerBtn" onclick="doAnswer()"
+                        style="display:none">Answer</button>
+                    <button class="btn btn-reject" id="rejectBtn" onclick="doReject()" style="display:none">
+                        Reject
+                    </button>
+                </div>
+
+                <!-- Mute/Hold -->
+                <div class="media-controls" id="mediaControls" style="display:none">
+                    <button class="btn btn-icon" id="muteBtn" onclick="toggleMute()">
+                        <span>Mute</span>
+                    </button>
+
+            </section>
+
+            <!-- Event Log -->
+            <section class="panel log-panel">
+                <div class="panel-header">
+                    <h2>📋 logs</h2>
+                    <button class="btn btn-sm" onclick="clearLog()">Clear</button>
+                </div>
+                <div class="log-container" id="logContainer">
+                    <div class="log-entry info">Ready.</div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- IMPORTANT: Audio Element for Remote Stream -->
+    <audio id="remoteAudio" autoplay controls style="display:none"></audio>
+
+    <!-- Using the published SDK from npm via CDN (or unpkg) -->
+    <!-- Before 1.0.2 is fully propagated on cdn.jsdelivr, you might need to use local or unpkg -->
+    <script src="https://unpkg.com/vobiz-webrtc-sdk@1.0.2/dist/vobiz-webrtc-sdk.min.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

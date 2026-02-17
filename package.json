@@ -1,0 +1,12 @@
+{
+    "name": "vobiz-sdk-example",
+    "version": "1.0.0",
+    "description": "Example implementation of Vobiz WebRTC SDK with Dynamic Answer URL backend",
+    "scripts": {
+        "start": "node server.js",
+        "client": "cd client && npx http-server . -p 8080"
+    },
+    "dependencies": {
+        "vobiz-webrtc-sdk": "^1.0.2"
+    }
+}
