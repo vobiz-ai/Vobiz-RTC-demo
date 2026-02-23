@@ -1,3 +1,4 @@
+require('dotenv').config();
 const http = require('http');
 const url = require('url');
 
@@ -40,9 +41,10 @@ const server = http.createServer((req, res) => {
     // <Dial> bridges the incoming call (from the SDK) to the destination number.
     // callerId: The number that will show up on the destination's phone.
     //           MUST be a verified number in your Vobiz account.
+    const callerId = process.env.CALLER_ID || '+918044784759'; // Fallback if env not set
     const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Dial callerId="+918044784759">
+    <Dial callerId="${callerId}">
         <Number>${destination}</Number>
     </Dial>
 </Response>`;

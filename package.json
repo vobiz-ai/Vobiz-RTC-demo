@@ -7,6 +7,7 @@
         "client": "cd client && npx http-server . -p 8080"
     },
     "dependencies": {
+        "dotenv": "^17.3.1",
         "vobiz-webrtc-sdk": "^1.0.2"
     }
 }
