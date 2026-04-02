@@ -31,17 +31,27 @@ const server = http.createServer((req, res) => {
         }
     }
 
-    // Default fallback (e.g. if testing from browser directly)
+    // Return error if no destination provided
     if (!destination) {
-        console.log('No "To" parameter found, defaulting to test number.');
-        destination = '+919148227303';
+        console.warn('No "To" parameter found. Returning 400.');
+        res.statusCode = 400;
+        res.setHeader('Content-Type', 'text/plain');
+        res.end('Missing destination. Provide a "To" query parameter.');
+        return;
     }
 
     // 2. Generate XML Response
     // <Dial> bridges the incoming call (from the SDK) to the destination number.
     // callerId: The number that will show up on the destination's phone.
     //           MUST be a verified number in your Vobiz account.
-    const callerId = process.env.CALLER_ID || '+918044784759'; // Fallback if env not set
+    const callerId = process.env.CALLER_ID;
+    if (!callerId) {
+        console.error('CALLER_ID is not set in .env. Please configure it before making calls.');
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'text/plain');
+        res.end('Server misconfigured: CALLER_ID environment variable is not set.');
+        return;
+    }
     const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Dial callerId="${callerId}">

@@ -39,7 +39,7 @@ The application follows a decoupled architecture for maximum flexibility:
 ### 1. Prerequisites
 - **Node.js**: v14.0.0 or higher.
 - **Vobiz Account**: An active account at [Vobiz Console](https://console.vobiz.ai).
-- **Verified Caller ID**: A phone number verified in your Vobiz account to use as the outbound CLI.
+- **Vobiz Phone Number**: A phone number purchased and active in your Vobiz account. This is your Vobiz number — it is what gets displayed on the recipient's phone when you make an outbound call.
 - **ngrok**: Recommended for local development to expose your backend to the internet.
 
 ### 2. Obtain Vobiz Credentials
@@ -70,7 +70,11 @@ Copy the `.env.example` file and set your credentials:
 ```bash
 cp .env.example .env
 ```
-Edit `.env` and set `CALLER_ID` to the phone number you purchased from the Vobiz console.
+Edit `.env` and set `CALLER_ID` to your Vobiz phone number — this is the number you purchased from the Vobiz console and it will appear as the caller ID on the recipient's phone when you make an outbound call. It must be an active number in your Vobiz account.
+
+```env
+CALLER_ID=+1234567890
+```
 
 ### Step 3: Launch the Backend
 The backend parses dialed numbers and provides the XML instructions.
