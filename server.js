@@ -1,6 +1,7 @@
 require('dotenv').config();
 const http = require('http');
-const url = require('url');
+const { URL } = require('url');
+const querystring = require('querystring');
 
 const port = 3000;
 
@@ -11,59 +12,69 @@ const port = 3000;
 const server = http.createServer((req, res) => {
     console.log(`[${new Date().toISOString()}] Request: ${req.method} ${req.url}`);
 
-    // Parse query parameters
-    const parsedUrl = url.parse(req.url, true);
-    const query = parsedUrl.query;
+    // Collect POST body (Vobiz sends params as application/x-www-form-urlencoded)
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', () => {
+        // Parse both query string and POST body params
+        const parsedUrl = new URL(req.url, `http://localhost:${port}`);
+        const queryParams = Object.fromEntries(parsedUrl.searchParams.entries());
+        const bodyParams = body ? querystring.parse(body) : {};
+        const params = { ...queryParams, ...bodyParams };
 
-    // 1. Identify where to call (Destination)
-    // Vobiz sends the destination in 'To' or 'Destination' query params
-    let destination = query.To || query.to || query.Destination || query.destination;
+        console.log(`[params] ${JSON.stringify(params)}`);
 
-    // Handle SIP URIs (e.g., sip:1234567890@domain.com) -> Extract 1234567890
-    if (destination && destination.startsWith('sip:')) {
-        try {
-            const match = destination.match(/^sip:(.*?)@/);
-            if (match && match[1]) {
-                destination = match[1];
+        // 1. Identify where to call (Destination)
+        // Vobiz sends the destination in 'To' or 'Destination' params
+        let destination = params.To || params.to || params.Destination || params.destination;
+
+        // Handle SIP URIs (e.g., sip:1234567890@domain.com) -> Extract 1234567890
+        if (destination && destination.startsWith('sip:')) {
+            try {
+                const match = destination.match(/^sip:(.*?)@/);
+                if (match && match[1]) {
+                    destination = match[1];
+                }
+            } catch (e) {
+                console.error('Error parsing SIP URI:', e);
             }
-        } catch (e) {
-            console.error('Error parsing SIP URI:', e);
         }
-    }
 
-    // Return error if no destination provided
-    if (!destination) {
-        console.warn('No "To" parameter found. Returning 400.');
-        res.statusCode = 400;
-        res.setHeader('Content-Type', 'text/plain');
-        res.end('Missing destination. Provide a "To" query parameter.');
-        return;
-    }
+        // Return error if no destination provided
+        if (!destination) {
+            console.warn('No "To" parameter found. Returning 400.');
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'text/plain');
+            res.end('Missing destination. Provide a "To" query parameter.');
+            return;
+        }
 
-    // 2. Generate XML Response
-    // <Dial> bridges the incoming call (from the SDK) to the destination number.
-    // callerId: The number that will show up on the destination's phone.
-    //           MUST be a verified number in your Vobiz account.
-    const callerId = process.env.CALLER_ID;
-    if (!callerId) {
-        console.error('CALLER_ID is not set in .env. Please configure it before making calls.');
-        res.statusCode = 500;
-        res.setHeader('Content-Type', 'text/plain');
-        res.end('Server misconfigured: CALLER_ID environment variable is not set.');
-        return;
-    }
-    const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+        // 2. Generate XML Response
+        // <Dial> bridges the incoming call (from the SDK) to the destination number.
+        // callerId: The number that will show up on the destination's phone.
+        //           MUST be a verified number in your Vobiz account.
+        const callerId = process.env.CALLER_ID;
+        if (!callerId) {
+            console.error('CALLER_ID is not set in .env. Please configure it before making calls.');
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'text/plain');
+            res.end('Server misconfigured: CALLER_ID environment variable is not set.');
+            return;
+        }
+
+        const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Dial callerId="${callerId}">
         <Number>${destination}</Number>
     </Dial>
 </Response>`;
 
-    // 3. Send Response
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'text/xml');
-    res.end(xmlResponse);
-    console.log(`-> Returned XML bridging to: ${destination}`);
+        // 3. Send Response
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/xml');
+        res.end(xmlResponse);
+        console.log(`-> Returned XML bridging to: ${destination}`);
+    });
 });
 
 server.listen(port, () => {

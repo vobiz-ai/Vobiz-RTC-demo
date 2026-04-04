@@ -1,136 +1,170 @@
-# 📞 Vobiz WebRTC SDK Example
+# Vobiz WebRTC SDK Example
 
 [![Vobiz](https://img.shields.io/badge/Vobiz-WebRTC_SDK-blue?style=for-the-badge)](https://vobiz.ai)
 [![Demo](https://img.shields.io/badge/Live_Demo-rtc--demo.vobiz.ai-green?style=for-the-badge)](https://rtc-demo.vobiz.ai/)
 
-A comprehensive example implementation of the **Vobiz WebRTC Browser SDK**. This repository provides a full-stack starter kit to build browser-based voice applications, featuring a modern UI and a dynamic XML backend.
+A full-stack starter kit for building browser-based voice applications with the **Vobiz WebRTC Browser SDK**. Includes a Node.js backend (Answer URL handler) and a browser-based softphone UI.
 
 ---
 
-## 🌟 Overview
+## Overview
 
-This project demonstrates the core capabilities of the Vobiz WebRTC SDK:
-- **Registration**: Seamlessly register browser endpoints with the Vobiz infrastructure.
-- **Outbound Calling**: Dial any phone number or SIP URI directly from your web application.
-- **Inbound Calling**: Receive and answer calls in the browser with real-time notifications.
-- **Dynamic Routing**: Use a Node.js backend to programmatically bridge calls using Vobiz XML.
-- **Media Controls**: Integrated Mute, Dual-Tone Multi-Frequency (DTMF) keypad, and status tracking.
+- **Outbound Calling**: Dial any phone number from the browser.
+- **Inbound Calling**: Receive and answer calls in the browser.
+- **Dynamic Routing**: Node.js backend reads the dialed number from the Vobiz webhook and returns XML to bridge the call.
+- **Media Controls**: Mute, DTMF keypad, and call status tracking.
 
 ---
 
-## 🏗️ System Architecture
+## Architecture
 
-The application follows a decoupled architecture for maximum flexibility:
+```
+Browser (client/)          Vobiz Platform          Backend (server.js)
+     |                          |                          |
+     |--- SDK registers ------->|                          |
+     |--- user dials number --->|                          |
+     |                          |--- POST / (To=number) -->|
+     |                          |<-- XML <Dial> response --|
+     |                          |--- bridges call -------->| (PSTN)
+```
 
-### 1. Frontend Client (`/client`)
-- **Engine**: Powered by `vobiz-webrtc-sdk`.
-- **UI**: Clean, responsive interface built with HTML5, CSS3 (Inter Typography), and Vanilla JS.
-- **Logic**: Handles the WebRTC session lifecycle, media permissions, and UI state management.
-
-### 2. Backend Server (`server.js`)
-- **Role**: Serves as the **Dynamic Answer URL** provider.
-- **Function**: When a call is initiated via the SDK, Vobiz queries this server for instructions.
-- **Response**: Returns Vobiz XML (`<Dial>`) to bridge the browser call to the destination phone network.
-
----
-
-## 🏁 Getting Started
-
-### 1. Prerequisites
-- **Node.js**: v14.0.0 or higher.
-- **Vobiz Account**: An active account at [Vobiz Console](https://console.vobiz.ai).
-- **Vobiz Phone Number**: A phone number purchased and active in your Vobiz account. This is your Vobiz number — it is what gets displayed on the recipient's phone when you make an outbound call.
-- **ngrok**: Recommended for local development to expose your backend to the internet.
-
-### 2. Obtain Vobiz Credentials
-To use the SDK, you need **Endpoint Credentials** (distinct from your main login):
-1.  Log in to the [Vobiz Dashboard](https://console.vobiz.ai).
-2.  Navigate to **Voice > Endpoints**.
-3.  Create a new endpoint or use an existing one.
-4.  Copy the **Username** (e.g., `user123456789`) and **Password**.
-
-### 3. Setup Your Answer URL
-Vobiz needs a public URL to fetch call instructions:
-1.  Go to **Voice > Applications** in the Dashboard.
-2.  Create a new Application.
-3.  Set the **Answer URL** (e.g., `https://your-server.com/answer`).
-4.  Link your **Phone Number** or **Endpoint** to this Application.
+1. The browser SDK registers with Vobiz using Endpoint credentials.
+2. When a call is placed, Vobiz sends a `POST` request to your **Answer URL** with the destination number in the `To` parameter.
+3. Your backend (`server.js`) reads `To` and returns a `<Dial>` XML response instructing Vobiz to bridge the call.
 
 ---
 
-## 🛠️ Installation & Execution
+## Prerequisites
 
-### Step 1: Install Dependencies
+- **Node.js** v14+
+- **Vobiz Account** — [console.vobiz.ai](https://console.vobiz.ai)
+- **A Vobiz Phone Number** — purchased in your Vobiz account (used as `CALLER_ID`)
+- **ngrok** (or equivalent) — to expose your local backend for development
+
+---
+
+## Setup
+
+### Step 1: Install dependencies
+
 ```bash
 npm install
 ```
 
-### Step 2: Configure Environment Variables
-Copy the `.env.example` file and set your credentials:
+### Step 2: Configure environment variables
+
 ```bash
 cp .env.example .env
 ```
-Edit `.env` and set `CALLER_ID` to your Vobiz phone number — this is the number you purchased from the Vobiz console and it will appear as the caller ID on the recipient's phone when you make an outbound call. It must be an active number in your Vobiz account.
+
+Edit `.env` and set `CALLER_ID` to your Vobiz phone number (E.164 format). This is the number that will appear as the caller ID on the recipient's phone. It must be an active number in your Vobiz account.
 
 ```env
 CALLER_ID=+1234567890
 ```
 
-### Step 3: Launch the Backend
-The backend parses dialed numbers and provides the XML instructions.
+### Step 3: Start the backend
+
 ```bash
 npm start
 ```
-*Runs on `http://localhost:3000`*
 
-### Step 3: Expose to Internet (Local Dev)
-If you are developing locally, use ngrok to provide Vobiz with a public endpoint:
+The server runs on `http://localhost:3000`.
+
+### Step 4: Expose the backend to the internet
+
+Vobiz needs to reach your server — use ngrok for local development:
+
 ```bash
 ngrok http 3000
 ```
-> [!IMPORTANT]
-> Copy the generated `https://...` URL and paste it into the **Answer URL** field of your Vobiz Application in the dashboard.
 
-### Step 4: Launch the Frontend
+Copy the generated URL, for example:
+```
+https://abc123.ngrok.io
+```
+
+> [!IMPORTANT]
+> This URL (just the root — **no path suffix**) is your **Answer URL**. Set it in the Vobiz Dashboard in the next step.
+
+### Step 5: Configure the Vobiz Dashboard
+
+**A. Create an Endpoint** (this gives you SDK login credentials):
+1. Go to **Voice > Endpoints**.
+2. Create a new endpoint.
+3. Note the **Username** and **Password** — you'll use these to log in from the browser.
+
+**B. Create an Application and set the Answer URL**:
+1. Go to **Voice > Applications**.
+2. Create a new Application.
+3. Set the **Answer URL** to your ngrok root URL:
+   ```
+   https://abc123.ngrok.io
+   ```
+   No path, no trailing slash needed — requests go to `/`.
+4. Link your **Endpoint** to this Application.
+
+### Step 6: Start the frontend
+
 ```bash
 npm run client
 ```
-*Runs on `http://localhost:8080`*
+
+The frontend runs on `http://localhost:8080`.
 
 ---
 
-## � Project Structure
+## Making a Call
+
+1. Open `http://localhost:8080`.
+2. Enter your **Endpoint Username** and **Password** from Step 5A.
+3. Click **Connect & Register** and wait for the status to show **Registered**.
+4. Enter a phone number in E.164 format (e.g., `+1234567890`) and click **Call**.
+5. Vobiz will POST to your Answer URL. Check the `server.js` terminal — you should see:
+   ```
+   [params] {"To":"+1234567890"}
+   -> Returned XML bridging to: +1234567890
+   ```
+
+---
+
+## Project Structure
 
 ```text
 vobiz-sdk-example/
-├── server.js          # Node.js Backend (Answer URL Logic)
-├── .env               # Environment Variables (Private)
-├── .env.example       # Template for Environment Variables
-├── package.json       # Scripts & Dependencies
-├── client/            # Frontend Assets
+├── server.js          # Backend: Answer URL handler (reads To, returns XML)
+├── .env               # Environment variables (git-ignored)
+├── .env.example       # Template for .env
+├── package.json       # Scripts and dependencies
+├── client/
 │   ├── index.html     # Dialer UI
-│   ├── app.js         # SDK Implementation Logic
-│   └── style.css      # Modern UI Styling
-└── README.md          # Documentation
+│   ├── app.js         # SDK integration logic
+│   └── style.css      # Styling
+└── README.md
 ```
 
 ---
 
-## 🧪 Testing Your Integration
+## Troubleshooting
 
-1.  Open `http://localhost:8080`.
-2.  Enter your **Endpoint Username** and **Password** obtained in the setup step.
-3.  Click **Connect & Register**. Wait for the status dot to turn green (**Registered**).
-4.  Enter a phone number in E.164 format (e.g., `+1234567890`) and click **Call**.
-5.  Check your `server.js` logs to see the incoming XML request from Vobiz.
+**`No "To" parameter found. Returning 400`**
+- Vobiz is reaching your server but the destination is missing. Check that your Application in the Vobiz Dashboard has an Endpoint linked to it, and that the Endpoint is registered (status: Registered in the browser UI).
 
----
+**Answer URL not being hit**
+- Make sure ngrok is running and the URL in your Vobiz Application matches exactly what ngrok shows (copy it fresh — ngrok URLs change on restart unless you have a paid plan).
 
-## 🔗 Resources
-- 📚 **Official SDK Docs**: [Vobiz Documentation](https://docs.vobiz.ai)
-- 🌐 **Live Demo**: [rtc-demo.vobiz.ai](https://rtc-demo.vobiz.ai/)
-- � **NPM Package**: [vobiz-webrtc-sdk](https://www.npmjs.com/package/vobiz-webrtc-sdk)
+**Call connects but no audio**
+- Check browser microphone permissions.
+- Make sure `CALLER_ID` in `.env` is the exact phone number (E.164) registered in your Vobiz account.
 
 ---
 
-Developed with ❤️ by the **Vobiz Team**.
+## Resources
+
+- **Official SDK Docs**: [docs.vobiz.ai](https://docs.vobiz.ai)
+- **Live Demo**: [rtc-demo.vobiz.ai](https://rtc-demo.vobiz.ai/)
+- **NPM Package**: [vobiz-webrtc-sdk](https://www.npmjs.com/package/vobiz-webrtc-sdk)
+
+---
+
+Developed by the **Vobiz Team**.
