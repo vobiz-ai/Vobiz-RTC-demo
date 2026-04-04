@@ -28,7 +28,7 @@ Browser (client/)          Vobiz Platform          Backend (server.js)
      |                          |--- bridges call -------->| (PSTN)
 ```
 
-1. The browser SDK registers with Vobiz using Endpoint credentials.
+1. The browser SDK registers with Vobiz using SIP Endpoint credentials.
 2. When a call is placed, Vobiz sends a `POST` request to your **Answer URL** with the destination number in the `To` parameter.
 3. Your backend (`server.js`) reads `To` and returns a `<Dial>` XML response instructing Vobiz to bridge the call.
 
@@ -57,7 +57,7 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` and set `CALLER_ID` to your Vobiz phone number (E.164 format). This is the number that will appear as the caller ID on the recipient's phone. It must be an active number in your Vobiz account.
+Edit `.env` and set `CALLER_ID` to your Vobiz phone number in E.164 format. This is the number that will appear as the caller ID on the recipient's phone. It must be an active number in your Vobiz account.
 
 ```env
 CALLER_ID=+1234567890
@@ -73,58 +73,103 @@ The server runs on `http://localhost:3000`.
 
 ### Step 4: Expose the backend to the internet
 
-Vobiz needs to reach your server — use ngrok for local development:
+Vobiz needs a publicly reachable URL to POST call instructions to. For local development, use ngrok:
 
 ```bash
 ngrok http 3000
 ```
 
-Copy the generated URL, for example:
+Copy the generated HTTPS URL — for example:
 ```
 https://abc123.ngrok.io
 ```
 
 > [!IMPORTANT]
-> This URL (just the root — **no path suffix**) is your **Answer URL**. Set it in the Vobiz Dashboard in the next step.
+> Use only the root URL — **no path suffix**. Your Answer URL is `https://abc123.ngrok.io`, not `https://abc123.ngrok.io/answer`.
+> ngrok URLs change every time you restart it (unless you have a paid plan), so update the Answer URL in the dashboard whenever you restart ngrok.
 
-### Step 5: Configure the Vobiz Dashboard
+---
 
-**A. Create an Endpoint** (this gives you SDK login credentials):
-1. Go to **Voice > Endpoints**.
-2. Create a new endpoint.
-3. Note the **Username** and **Password** — you'll use these to log in from the browser.
+### Step 5: Create a SIP Endpoint on Vobiz
 
-**B. Create an Application and set the Answer URL**:
-1. Go to **Voice > Applications**.
-2. Create a new Application.
-3. Set the **Answer URL** to your ngrok root URL:
-   ```
-   https://abc123.ngrok.io
-   ```
-   No path, no trailing slash needed — requests go to `/`.
-4. Link your **Endpoint** to this Application.
+Go to **[Voice > Endpoints](https://console.vobiz.ai/app/voice/endpoints)** and click **Create Endpoint**.
 
-### Step 6: Start the frontend
+Fill in the form:
+
+| Field | What to enter |
+|---|---|
+| **Alias** | A friendly name, e.g. `My Browser Phone` |
+| **Username** | Alphanumeric only, e.g. `myuser123` — **save this, you'll need it to log in** |
+| **Password** | A strong password — **save this too** |
+| **Application** | Leave as `None` for now (you'll link it after creating the Application) |
+
+Click **Create Endpoint**.
+
+---
+
+### Step 6: Create an XML Application on Vobiz
+
+Go to **[Voice > Applications](https://console.vobiz.ai/app/voice/applications)** and click **Create Application**.
+
+Fill in the form:
+
+| Field | What to enter |
+|---|---|
+| **Application Name** | A friendly name, e.g. `My WebRTC App` |
+| **Answer URL** | Your ngrok URL, e.g. `https://abc123.ngrok.io` — method must be **POST** |
+| **Hangup URL** | Leave blank (optional) |
+| **Fallback Answer URL** | Leave blank (optional) |
+| **Default Endpoint App** | Toggle **ON** — this links the application to your endpoint automatically |
+
+Click **Create Application**.
+
+> [!TIP]
+> Alternatively, go back to your Endpoint and edit it to set the **Application** field to the application you just created.
+
+---
+
+### Step 7: Start the frontend
 
 ```bash
 npm run client
 ```
 
-The frontend runs on `http://localhost:8080`.
+The frontend runs at `http://localhost:8080`.
 
 ---
 
 ## Making a Call
 
-1. Open `http://localhost:8080`.
-2. Enter your **Endpoint Username** and **Password** from Step 5A.
-3. Click **Connect & Register** and wait for the status to show **Registered**.
-4. Enter a phone number in E.164 format (e.g., `+1234567890`) and click **Call**.
-5. Vobiz will POST to your Answer URL. Check the `server.js` terminal — you should see:
-   ```
-   [params] {"To":"+1234567890"}
-   -> Returned XML bridging to: +1234567890
-   ```
+Open `http://localhost:8080` in your browser. You'll see three panels:
+
+**Authentication panel (left)**
+1. Enter the **Endpoint Username** you created in Step 5 (e.g. `myuser123`).
+2. Enter the **Endpoint Password**.
+3. Click **Connect & Register**.
+4. Wait until the logs panel (right) shows: `Successfully registered with Vobiz!`
+
+**Dialer panel (center)**
+1. Type the destination phone number in E.164 format in the **Destination Number** field (e.g. `+916002935745`).
+2. You can also use the keypad to enter the number.
+3. Click **Call**.
+
+**Logs panel (right)**
+
+Watch the logs to confirm the call flow:
+```
+Connecting as myuser123...
+Connection change: {"state":"connected","reason":"registered"}
+Successfully registered with Vobiz!
+Calling +916002935745...
+Ringing... (call-id-here)
+Call answered! (call-id-here)
+```
+
+On your backend terminal you should also see:
+```
+[params] {"To":"+916002935745"}
+-> Returned XML bridging to: +916002935745
+```
 
 ---
 
@@ -148,14 +193,23 @@ vobiz-sdk-example/
 ## Troubleshooting
 
 **`No "To" parameter found. Returning 400`**
-- Vobiz is reaching your server but the destination is missing. Check that your Application in the Vobiz Dashboard has an Endpoint linked to it, and that the Endpoint is registered (status: Registered in the browser UI).
+- Vobiz is reaching your server but without a destination. Make sure your Endpoint is linked to the Application (Step 6) and the Endpoint is in a registered state in the browser UI.
 
-**Answer URL not being hit**
-- Make sure ngrok is running and the URL in your Vobiz Application matches exactly what ngrok shows (copy it fresh — ngrok URLs change on restart unless you have a paid plan).
+**Answer URL not being hit at all**
+- Verify ngrok is still running (`ngrok http 3000`).
+- Check that the URL in your Vobiz Application matches the current ngrok URL exactly — ngrok generates a new URL on every restart.
 
-**Call connects but no audio**
-- Check browser microphone permissions.
-- Make sure `CALLER_ID` in `.env` is the exact phone number (E.164) registered in your Vobiz account.
+**`Call failed: Unknown` in the logs**
+- This usually means the Answer URL returned an error or wasn't reachable. Check your `server.js` terminal for errors.
+- Make sure `CALLER_ID` in `.env` is the exact E.164 phone number registered in your Vobiz account.
+
+**Stuck on "Connecting..." / never registers**
+- Double-check the Endpoint username and password — usernames are alphanumeric only.
+- Make sure the Endpoint exists at [console.vobiz.ai/app/voice/endpoints](https://console.vobiz.ai/app/voice/endpoints).
+
+**No audio on the call**
+- Allow microphone access when the browser prompts.
+- Try a different browser (Chrome is recommended for WebRTC).
 
 ---
 
