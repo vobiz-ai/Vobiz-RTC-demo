@@ -23,6 +23,25 @@
             </div>
         </header>
 
+        <!-- Incoming Call Banner -->
+        <div class="incoming-banner" id="incomingBanner" style="display:none">
+            <div class="incoming-banner-inner">
+                <div class="incoming-avatar">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .84h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
+                    </svg>
+                </div>
+                <div class="incoming-info">
+                    <div class="incoming-label">Incoming Call</div>
+                    <div class="incoming-caller" id="incomingCaller">Unknown</div>
+                </div>
+                <div class="incoming-actions">
+                    <button class="btn btn-answer-banner" onclick="doAnswer()">Answer</button>
+                    <button class="btn btn-reject-banner" onclick="doReject()">Decline</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Main Content -->
         <main class="main">
             <!-- Login Panel -->
@@ -52,7 +71,7 @@
             <section class="panel dialer-panel" id="dialerPanel">
                 <div class="panel-header">
                     <h2>📞 Dialer</h2>
-                    <p class="panel-desc">Make outbound calls</p>
+                    <p class="panel-desc" id="dialerDesc">Make outbound calls</p>
                 </div>
                 <div class="form-group">
                     <label for="destination">Destination Number</label>
@@ -77,13 +96,7 @@
 
                 <div class="call-actions">
                     <button class="btn btn-call" id="callBtn" onclick="doCall()">Call</button>
-                    <button class="btn btn-hangup" id="hangupBtn" onclick="doHangup()"
-                        style="display:none">Hangup</button>
-                    <button class="btn btn-answer" id="answerBtn" onclick="doAnswer()"
-                        style="display:none">Answer</button>
-                    <button class="btn btn-reject" id="rejectBtn" onclick="doReject()" style="display:none">
-                        Reject
-                    </button>
+                    <button class="btn btn-hangup" id="hangupBtn" onclick="doHangup()" style="display:none">Hangup</button>
                 </div>
 
                 <!-- Mute/Hold -->
@@ -91,7 +104,7 @@
                     <button class="btn btn-icon" id="muteBtn" onclick="toggleMute()">
                         <span>Mute</span>
                     </button>
-
+                </div>
             </section>
 
             <!-- Event Log -->
@@ -108,10 +121,9 @@
     </div>
 
     <!-- IMPORTANT: Audio Element for Remote Stream -->
-    <audio id="remoteAudio" autoplay controls style="display:none"></audio>
+    <audio id="remoteAudio" autoplay playsinline style="display:none"></audio>
 
     <!-- Using the published SDK from npm via CDN (or unpkg) -->
-    <!-- Before 1.0.2 is fully propagated on cdn.jsdelivr, you might need to use local or unpkg -->
     <script src="https://unpkg.com/vobiz-webrtc-sdk@1.0.2/dist/vobiz-webrtc-sdk.min.js"></script>
     <script src="app.js"></script>
 </body>

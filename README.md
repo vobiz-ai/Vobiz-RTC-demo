@@ -9,28 +9,39 @@ A full-stack starter kit for building browser-based voice applications with the 
 
 ## Overview
 
-- **Outbound Calling**: Dial any phone number from the browser.
-- **Inbound Calling**: Receive and answer calls in the browser.
-- **Dynamic Routing**: Node.js backend reads the dialed number from the Vobiz webhook and returns XML to bridge the call.
+- **Outbound Calling**: Dial any phone number from the browser to PSTN.
+- **Inbound Calling**: Someone calls your Vobiz number — it rings in the browser.
+- **Dynamic Routing**: Node.js backend handles both directions automatically.
 - **Media Controls**: Mute, DTMF keypad, and call status tracking.
 
 ---
 
 ## Architecture
 
+**Outbound (Browser → PSTN)**
 ```
 Browser (client/)          Vobiz Platform          Backend (server.js)
      |                          |                          |
      |--- SDK registers ------->|                          |
-     |--- user dials number --->|                          |
-     |                          |--- POST / (To=number) -->|
-     |                          |<-- XML <Dial> response --|
-     |                          |--- bridges call -------->| (PSTN)
+     |--- user dials +91xxx --->|                          |
+     |                          |--- POST / (To=+91xxx) -->|
+     |                          |<-- <Dial><Number> -------|
+     |                          |--- bridges to PSTN ----->|
 ```
 
-1. The browser SDK registers with Vobiz using SIP Endpoint credentials.
-2. When a call is placed, Vobiz sends a `POST` request to your **Answer URL** with the destination number in the `To` parameter.
-3. Your backend (`server.js`) reads `To` and returns a `<Dial>` XML response instructing Vobiz to bridge the call.
+**Inbound (PSTN → Browser)**
+```
+PSTN caller dials            Vobiz Platform          Backend (server.js)
+your Vobiz number                 |                          |
+     |--- calls +91xxx ---------->|                          |
+     |                            |--- POST / (no To) ------>|
+     |                            |<-- <Dial><Sip> endpoint--|
+     |                            |--- rings browser ------->|
+                                                    Browser answers
+```
+
+- **Outbound**: `To` param is a phone number → backend returns `<Dial><Number>` to bridge to PSTN.
+- **Inbound**: No `To` param (or `To` = your own Vobiz number) → backend returns `<Dial><Sip>` to ring the browser endpoint.
 
 ---
 
@@ -57,10 +68,17 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` and set `CALLER_ID` to your Vobiz phone number in E.164 format. This is the number that will appear as the caller ID on the recipient's phone. It must be an active number in your Vobiz account.
+Edit `.env` and set both variables:
 
 ```env
+# Your Vobiz phone number (E.164 format).
+# Appears as caller ID on outbound calls. Must be active in your Vobiz account.
 CALLER_ID=+1234567890
+
+# Your SIP Endpoint URI for inbound calls (PSTN -> browser).
+# Format: sip:<username>@sip.vobiz.ai
+# The username is what you set when creating the endpoint in the Vobiz Dashboard.
+SIP_ENDPOINT=sip:myusername@sip.vobiz.ai
 ```
 
 ### Step 3: Start the backend
@@ -138,6 +156,29 @@ The frontend runs at `http://localhost:8080`.
 
 ---
 
+## Receiving Inbound Calls
+
+For someone to call your Vobiz number and have it ring in the browser:
+
+1. Make sure `SIP_ENDPOINT` is set in `.env`:
+   ```env
+   SIP_ENDPOINT=sip:myusername@sip.vobiz.ai
+   ```
+   Replace `myusername` with the **Username** of the SIP Endpoint you created in Step 5.
+
+2. Your Vobiz phone number must be linked to the Application (the one with the Answer URL set). Do this in the Vobiz Dashboard under **Voice > Numbers** — assign the number to your Application.
+
+3. Open `http://localhost:8080`, log in with your Endpoint credentials, and wait for **Registered** status.
+
+4. Call your Vobiz phone number from any phone. The browser will show a green incoming call banner at the top of the page with the caller's number. Click **Answer** to pick up.
+
+When an inbound call arrives, the backend logs will show:
+```
+-> Inbound call from +19876543210, ringing endpoint: sip:myusername@sip.vobiz.ai
+```
+
+---
+
 ## Making a Call
 
 Open `http://localhost:8080` in your browser. You'll see three panels:
@@ -207,7 +248,13 @@ vobiz-sdk-example/
 - Double-check the Endpoint username and password — usernames are alphanumeric only.
 - Make sure the Endpoint exists at [console.vobiz.ai/app/voice/endpoints](https://console.vobiz.ai/app/voice/endpoints).
 
-**No audio on the call**
+**Inbound call doesn't ring in the browser**
+- Check that `SIP_ENDPOINT` is set correctly in `.env` — format must be `sip:username@sip.vobiz.ai`.
+- Make sure your Vobiz phone number is linked to the Application in the Dashboard (**Voice > Numbers**).
+- The browser endpoint must be **registered** (logged in) before a call arrives — calls won't queue if the endpoint is offline.
+- Check the backend logs for `-> Inbound call from ...` to confirm the server is receiving and routing the call.
+
+
 - Allow microphone access when the browser prompts.
 - Try a different browser (Chrome is recommended for WebRTC).
 

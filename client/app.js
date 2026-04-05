@@ -83,6 +83,7 @@ function doLogin() {
             document.getElementById('loginBtn').style.display = 'block';
             document.getElementById('logoutBtn').style.display = 'none';
             hideCallUI();
+            hideIncomingBanner();
         });
 
         vobiz.client.on('onCallRemoteRinging', (callInfo) => {
@@ -93,63 +94,35 @@ function doLogin() {
         vobiz.client.on('onCallAnswered', (callInfo) => {
             log(`✅ Call answered! (${callInfo?.callUUID || ''})`, 'success');
             setStatus('In Call', 'in-call');
+            hideIncomingBanner();
             showInCallUI();
-
-            // Workaround: Manually attach remote stream
-            setTimeout(() => {
-                const remoteAudio = document.getElementById('remoteAudio');
-
-                // Try getting stream from the SDK's remote view
-                let stream = null;
-                if (vobiz && vobiz.client && vobiz.client.remoteView) {
-                    stream = vobiz.client.remoteView.srcObject;
-                }
-
-                // Fallback: check peer connection receivers
-                if (!stream && vobiz && vobiz.client) {
-                    const pc = vobiz.client.getPeerConnection().pc;
-                    if (pc) {
-                        const receivers = pc.getReceivers();
-                        const audioReceiver = receivers.find(r => r.track && r.track.kind === 'audio');
-                        if (audioReceiver && audioReceiver.track) {
-                            stream = new MediaStream([audioReceiver.track]);
-                            log('🔊 Found audio track from PC receivers', 'info');
-                        }
-                    }
-                }
-
-                if (stream && remoteAudio) {
-                    remoteAudio.srcObject = stream;
-                    remoteAudio.play().catch(e => log('Error playing audio: ' + e.message, 'error'));
-                    log('🔊 SDK has remote stream, attaching to backup audio element...', 'info');
-                } else {
-                    log('⚠️ Could not find remote stream to attach', 'warning');
-                }
-            }, 1500);
+            attachRemoteAudio();
         });
 
         vobiz.client.on('onCallTerminated', (callInfo) => {
             log(`📴 Call ended: ${callInfo?.reason || 'Terminated'}`, 'warning');
             setStatus('Registered', 'online');
             hideCallUI();
+            hideIncomingBanner();
         });
 
         vobiz.client.on('onCallFailed', (callInfo) => {
             log(`❌ Call failed: ${callInfo?.reason || 'Unknown'}`, 'error');
             setStatus('Registered', 'online');
             hideCallUI();
+            hideIncomingBanner();
         });
 
         vobiz.client.on('onIncomingCall', (callerName, extraHeaders) => {
             log(`📲 Incoming call from: ${callerName}`, 'event');
             setStatus('Incoming Call', 'in-call');
-            showIncomingUI(callerName);
+            showIncomingBanner(callerName);
         });
 
         vobiz.client.on('onIncomingCallCanceled', () => {
             log('📴 Incoming call cancelled by caller', 'warning');
             setStatus('Registered', 'online');
-            hideIncomingUI();
+            hideIncomingBanner();
         });
 
         vobiz.client.on('onMediaPermission', (granted) => {
@@ -214,7 +187,7 @@ function doAnswer() {
     if (vobiz) {
         vobiz.client.answer();
         log('Answering call...', 'success');
-        hideIncomingUI();
+        hideIncomingBanner();
         showInCallUI();
     }
 }
@@ -223,7 +196,8 @@ function doReject() {
     if (vobiz) {
         vobiz.client.reject();
         log('Call rejected', 'warning');
-        hideIncomingUI();
+        hideIncomingBanner();
+        setStatus('Registered', 'online');
     }
 }
 
@@ -232,6 +206,44 @@ function doHangup() {
         vobiz.client.hangup();
         log('Hanging up...', 'info');
     }
+}
+
+// ===== Remote Audio =====
+function attachRemoteAudio() {
+    setTimeout(() => {
+        const remoteAudio = document.getElementById('remoteAudio');
+        let stream = null;
+
+        // Try getting stream from the SDK's remote view
+        if (vobiz && vobiz.client && vobiz.client.remoteView) {
+            stream = vobiz.client.remoteView.srcObject;
+        }
+
+        // Fallback: check peer connection receivers
+        if (!stream && vobiz && vobiz.client) {
+            try {
+                const pc = vobiz.client.getPeerConnection().pc;
+                if (pc) {
+                    const receivers = pc.getReceivers();
+                    const audioReceiver = receivers.find(r => r.track && r.track.kind === 'audio');
+                    if (audioReceiver && audioReceiver.track) {
+                        stream = new MediaStream([audioReceiver.track]);
+                        log('🔊 Found audio track from PC receivers', 'info');
+                    }
+                }
+            } catch (e) {
+                log('Could not get peer connection: ' + e.message, 'warning');
+            }
+        }
+
+        if (stream && remoteAudio) {
+            remoteAudio.srcObject = stream;
+            remoteAudio.play().catch(e => log('Error playing audio: ' + e.message, 'error'));
+            log('🔊 Remote audio stream attached', 'info');
+        } else {
+            log('⚠️ Could not find remote stream to attach', 'warning');
+        }
+    }, 1500);
 }
 
 // ===== DTMF =====
@@ -265,19 +277,30 @@ function toggleMute() {
     isMuted = !isMuted;
 }
 
+// ===== Incoming Banner =====
+function showIncomingBanner(callerName) {
+    const banner = document.getElementById('incomingBanner');
+    const callerEl = document.getElementById('incomingCaller');
+    callerEl.textContent = callerName || 'Unknown';
+    banner.style.display = 'flex';
+    document.getElementById('dialerDesc').textContent = 'Incoming call...';
+}
+
+function hideIncomingBanner() {
+    document.getElementById('incomingBanner').style.display = 'none';
+    document.getElementById('dialerDesc').textContent = 'Make outbound calls';
+}
+
 // ===== UI Helpers =====
 function showInCallUI() {
     document.getElementById('callBtn').style.display = 'none';
-    document.getElementById('answerBtn').style.display = 'none';
     document.getElementById('hangupBtn').style.display = 'flex';
     document.getElementById('mediaControls').style.display = 'flex';
 }
 
 function hideCallUI() {
     if (document.getElementById('callBtn')) document.getElementById('callBtn').style.display = 'flex';
-    if (document.getElementById('answerBtn')) document.getElementById('answerBtn').style.display = 'none';
     if (document.getElementById('hangupBtn')) document.getElementById('hangupBtn').style.display = 'none';
-    if (document.getElementById('rejectBtn')) document.getElementById('rejectBtn').style.display = 'none';
     if (document.getElementById('mediaControls')) document.getElementById('mediaControls').style.display = 'none';
 
     isMuted = false;
@@ -287,18 +310,6 @@ function hideCallUI() {
         const span = muteBtn.querySelector('span');
         if (span) span.textContent = 'Mute';
     }
-}
-
-function showIncomingUI(callerName) {
-    document.getElementById('answerBtn').style.display = 'flex';
-    document.getElementById('rejectBtn').style.display = 'flex';
-    document.getElementById('callBtn').style.display = 'none';
-}
-
-function hideIncomingUI() {
-    document.getElementById('answerBtn').style.display = 'none';
-    document.getElementById('rejectBtn').style.display = 'none';
-    document.getElementById('callBtn').style.display = 'flex';
 }
 
 // ===== Init =====

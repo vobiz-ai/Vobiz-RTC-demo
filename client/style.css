@@ -134,6 +134,111 @@ body {
   }
 }
 
+/* ======== Incoming Call Banner ======== */
+.incoming-banner {
+  position: sticky;
+  top: 57px;
+  z-index: 90;
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  padding: 14px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(34, 197, 94, 0.35);
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.incoming-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.incoming-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+  animation: ringPulse 1s ease-in-out infinite;
+}
+
+@keyframes ringPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4); }
+  50% { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
+}
+
+.incoming-info {
+  flex: 1;
+}
+
+.incoming-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.incoming-caller {
+  font-size: 18px;
+  font-weight: 700;
+  color: white;
+  margin-top: 2px;
+}
+
+.incoming-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.btn-answer-banner {
+  background: white;
+  color: var(--green);
+  font-weight: 700;
+  padding: 10px 24px;
+  border-radius: 50px;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-answer-banner:hover {
+  background: #f0fdf4;
+  transform: translateY(-1px);
+}
+
+.btn-reject-banner {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  font-weight: 600;
+  padding: 10px 24px;
+  border-radius: 50px;
+  font-size: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.btn-reject-banner:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 /* ======== Main Layout ======== */
 .main {
   display: grid;

@@ -6,8 +6,11 @@ const querystring = require('querystring');
 const port = 3000;
 
 // Dynamic Answer URL Server for Vobiz
-// This server responds to Vobiz Answer URL requests.
-// It parses the 'To' header/parameter to dynamically bridge the call.
+// Handles both outbound (browser -> PSTN) and inbound (PSTN -> browser) calls.
+//
+// Outbound: SDK sends a call with a To= phone number -> we Dial that number
+// Inbound:  Someone calls your Vobiz number -> no To param (or To = your Vobiz number)
+//           -> we Dial the SIP endpoint so it rings in the browser
 
 const server = http.createServer((req, res) => {
     console.log(`[${new Date().toISOString()}] Request: ${req.method} ${req.url}`);
@@ -24,56 +27,69 @@ const server = http.createServer((req, res) => {
 
         console.log(`[params] ${JSON.stringify(params)}`);
 
-        // 1. Identify where to call (Destination)
-        // Vobiz sends the destination in 'To' or 'Destination' params
-        let destination = params.To || params.to || params.Destination || params.destination;
-
-        // Handle SIP URIs (e.g., sip:1234567890@domain.com) -> Extract 1234567890
-        if (destination && destination.startsWith('sip:')) {
-            try {
-                const match = destination.match(/^sip:(.*?)@/);
-                if (match && match[1]) {
-                    destination = match[1];
-                }
-            } catch (e) {
-                console.error('Error parsing SIP URI:', e);
-            }
-        }
-
-        // Return error if no destination provided
-        if (!destination) {
-            console.warn('No "To" parameter found. Returning 400.');
-            res.statusCode = 400;
-            res.setHeader('Content-Type', 'text/plain');
-            res.end('Missing destination. Provide a "To" query parameter.');
-            return;
-        }
-
-        // 2. Generate XML Response
-        // <Dial> bridges the incoming call (from the SDK) to the destination number.
-        // callerId: The number that will show up on the destination's phone.
-        //           MUST be a verified number in your Vobiz account.
         const callerId = process.env.CALLER_ID;
         if (!callerId) {
-            console.error('CALLER_ID is not set in .env. Please configure it before making calls.');
+            console.error('CALLER_ID is not set in .env.');
             res.statusCode = 500;
             res.setHeader('Content-Type', 'text/plain');
             res.end('Server misconfigured: CALLER_ID environment variable is not set.');
             return;
         }
 
-        const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+        // Extract destination from To/Destination param
+        let destination = params.To || params.to || params.Destination || params.destination || '';
+
+        // Strip SIP URI prefix if present (e.g. sip:+91xxx@domain.com -> +91xxx)
+        if (destination.startsWith('sip:')) {
+            const match = destination.match(/^sip:(.*?)@/);
+            if (match && match[1]) destination = match[1];
+        }
+
+        // Determine call direction:
+        //   Outbound — browser SDK placed the call, destination is a real phone number (starts with +)
+        //   Inbound  — someone called your Vobiz number; destination is empty or equals your CALLER_ID
+        const sipEndpoint = process.env.SIP_ENDPOINT;
+        const isInbound = !destination || destination === callerId || destination === callerId.replace(/^\+/, '');
+
+        if (isInbound) {
+            // ── Inbound: PSTN caller -> ring the browser endpoint ──
+            if (!sipEndpoint) {
+                console.error('SIP_ENDPOINT is not set in .env. Cannot route inbound calls.');
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'text/plain');
+                res.end('Server misconfigured: SIP_ENDPOINT environment variable is not set.');
+                return;
+            }
+
+            const from = params.From || params.from || 'Unknown';
+            console.log(`-> Inbound call from ${from}, ringing endpoint: ${sipEndpoint}`);
+
+            const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Dial callerId="${from}">
+        <Sip>${sipEndpoint}</Sip>
+    </Dial>
+</Response>`;
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'text/xml');
+            res.end(xmlResponse);
+
+        } else {
+            // ── Outbound: browser -> PSTN number ──
+            console.log(`-> Outbound call, bridging to: ${destination}`);
+
+            const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Dial callerId="${callerId}">
         <Number>${destination}</Number>
     </Dial>
 </Response>`;
 
-        // 3. Send Response
-        res.statusCode = 200;
-        res.setHeader('Content-Type', 'text/xml');
-        res.end(xmlResponse);
-        console.log(`-> Returned XML bridging to: ${destination}`);
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'text/xml');
+            res.end(xmlResponse);
+        }
     });
 });
 
@@ -85,11 +101,11 @@ server.listen(port, () => {
   1. Expose this server to the internet (e.g., using ngrok):
      ngrok http ${port}
      
-  2. Copy the public URL (https://...)
-  
-  3. Paste it into your Vobiz Dashboard > Voice Applications > Answer URL
-  
-  This will allow your browser calls to connect to any number.
+  2. Copy the public URL (https://...) and paste it into
+     your Vobiz Dashboard > Voice Applications > Answer URL
+
+  3. For inbound calls, set SIP_ENDPOINT in .env to your
+     endpoint's SIP URI (e.g. sip:myuser@sip.vobiz.ai)
 -------------------------------------------------------
     `);
 });
