@@ -32,6 +32,15 @@ const server = http.createServer((req, res) => {
 
         console.log(`[params] ${JSON.stringify(params)}`);
 
+        // Hangup event — Vobiz is notifying us the call ended, just acknowledge
+        const event = params.Event || params.event || '';
+        if (event === 'Hangup') {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'text/xml');
+            res.end(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+            return;
+        }
+
         const callerId = process.env.CALLER_ID;
         if (!callerId) {
             console.error('CALLER_ID is not set in .env.');
