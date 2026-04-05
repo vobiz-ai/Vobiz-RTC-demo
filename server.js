@@ -9,8 +9,10 @@ const port = 3000;
 // Handles both outbound (browser -> PSTN) and inbound (PSTN -> browser) calls.
 //
 // Outbound: SDK sends a call with a To= phone number -> we Dial that number
-// Inbound:  Someone calls your Vobiz number -> no To param (or To = your Vobiz number)
-//           -> we Dial the SIP endpoint so it rings in the browser
+// Inbound:  Someone calls your Vobiz number -> Direction=inbound -> ring the SIP endpoint
+
+// Strip non-digit characters for loose number comparison
+const digitsOnly = (s) => (s || '').replace(/\D/g, '');
 
 const server = http.createServer((req, res) => {
     console.log(`[${new Date().toISOString()}] Request: ${req.method} ${req.url}`);
@@ -45,14 +47,24 @@ const server = http.createServer((req, res) => {
             if (match && match[1]) destination = match[1];
         }
 
-        // Determine call direction:
-        //   Outbound — browser SDK placed the call, destination is a real phone number (starts with +)
-        //   Inbound  — someone called your Vobiz number; destination is empty or equals your CALLER_ID
-        const sipEndpoint = process.env.SIP_ENDPOINT;
-        const isInbound = !destination || destination === callerId || destination === callerId.replace(/^\+/, '');
+        // Determine call direction.
+        // Primary signal: Vobiz sends Direction=inbound for PSTN -> your number calls.
+        // Fallback: compare trailing digits of To against CALLER_ID to handle format
+        // variations like 07971543187 vs +917971543187 vs 917971543187.
+        const direction = (params.Direction || params.direction || '').toLowerCase();
+        const callerIdDigits = digitsOnly(callerId);
+        const destinationDigits = digitsOnly(destination);
+
+        const isInbound = direction === 'inbound' ||
+            (!direction && (
+                !destination ||
+                callerIdDigits.endsWith(destinationDigits) ||
+                destinationDigits.endsWith(callerIdDigits)
+            ));
 
         if (isInbound) {
             // ── Inbound: PSTN caller -> ring the browser endpoint ──
+            const sipEndpoint = process.env.SIP_ENDPOINT;
             if (!sipEndpoint) {
                 console.error('SIP_ENDPOINT is not set in .env. Cannot route inbound calls.');
                 res.statusCode = 500;
@@ -105,7 +117,7 @@ server.listen(port, () => {
      your Vobiz Dashboard > Voice Applications > Answer URL
 
   3. For inbound calls, set SIP_ENDPOINT in .env to your
-     endpoint's SIP URI (e.g. sip:myuser@sip.vobiz.ai)
+     endpoint's SIP URI (e.g. sip:myuser@registrar.vobiz.ai)
 -------------------------------------------------------
     `);
 });
