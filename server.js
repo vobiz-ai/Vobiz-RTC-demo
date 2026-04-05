@@ -8,8 +8,13 @@ const port = 3000;
 // Dynamic Answer URL Server for Vobiz
 // Handles both outbound (browser -> PSTN) and inbound (PSTN -> browser) calls.
 //
-// Outbound: SDK sends a call with a To= phone number -> we Dial that number
-// Inbound:  Someone calls your Vobiz number -> Direction=inbound -> ring the SIP endpoint
+// Call types Vobiz sends to this Answer URL:
+//
+//   SDK outbound (browser -> PSTN):
+//     From=sip:user@registrar.vobiz.ai  RouteType=sip  To=919148227303
+//
+//   PSTN inbound (phone -> your Vobiz number):
+//     From=9148227303  RouteType=(empty)  To=07971543187  Direction=inbound
 
 // Strip non-digit characters for loose number comparison
 const digitsOnly = (s) => (s || '').replace(/\D/g, '');
@@ -17,11 +22,9 @@ const digitsOnly = (s) => (s || '').replace(/\D/g, '');
 const server = http.createServer((req, res) => {
     console.log(`[${new Date().toISOString()}] Request: ${req.method} ${req.url}`);
 
-    // Collect POST body (Vobiz sends params as application/x-www-form-urlencoded)
     let body = '';
     req.on('data', chunk => { body += chunk.toString(); });
     req.on('end', () => {
-        // Parse both query string and POST body params
         const parsedUrl = new URL(req.url, `http://localhost:${port}`);
         const queryParams = Object.fromEntries(parsedUrl.searchParams.entries());
         const bodyParams = body ? querystring.parse(body) : {};
@@ -38,32 +41,44 @@ const server = http.createServer((req, res) => {
             return;
         }
 
-        // Extract destination from To/Destination param
-        let destination = params.To || params.to || params.Destination || params.destination || '';
+        const rawFrom = params.From || params.from || '';
+        const routeType = (params.RouteType || params.routeType || '').toLowerCase();
 
-        // Strip SIP URI prefix if present (e.g. sip:+91xxx@domain.com -> +91xxx)
-        if (destination.startsWith('sip:')) {
-            const match = destination.match(/^sip:(.*?)@/);
-            if (match && match[1]) destination = match[1];
-        }
+        // SDK outbound call: From is a SIP URI (sip:user@domain) or RouteType=sip
+        // PSTN inbound call: From is a plain phone number, RouteType is empty
+        const isSdkCall = rawFrom.startsWith('sip:') || routeType === 'sip';
 
-        // Determine call direction.
-        // Primary signal: Vobiz sends Direction=inbound for PSTN -> your number calls.
-        // Fallback: compare trailing digits of To against CALLER_ID to handle format
-        // variations like 07971543187 vs +917971543187 vs 917971543187.
-        const direction = (params.Direction || params.direction || '').toLowerCase();
-        const callerIdDigits = digitsOnly(callerId);
-        const destinationDigits = digitsOnly(destination);
+        if (isSdkCall) {
+            // ── SDK Outbound: browser -> PSTN ──
+            // To is the destination phone number the user dialed
+            let destination = params.To || params.to || '';
 
-        const isInbound = direction === 'inbound' ||
-            (!direction && (
-                !destination ||
-                callerIdDigits.endsWith(destinationDigits) ||
-                destinationDigits.endsWith(callerIdDigits)
-            ));
+            // Strip SIP URI if To is also a SIP URI
+            if (destination.startsWith('sip:')) {
+                const match = destination.match(/^sip:(.*?)@/);
+                if (match && match[1]) destination = match[1];
+            }
 
-        if (isInbound) {
-            // ── Inbound: PSTN caller -> ring the browser endpoint ──
+            // Ensure E.164 format — add + if missing
+            if (destination && !destination.startsWith('+')) {
+                destination = `+${destination}`;
+            }
+
+            console.log(`-> SDK outbound call, bridging to: ${destination}`);
+
+            const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Dial callerId="${callerId}">
+        <Number>${destination}</Number>
+    </Dial>
+</Response>`;
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'text/xml');
+            res.end(xmlResponse);
+
+        } else {
+            // ── PSTN Inbound: phone -> your Vobiz number -> ring browser ──
             const sipEndpoint = process.env.SIP_ENDPOINT;
             if (!sipEndpoint) {
                 console.error('SIP_ENDPOINT is not set in .env. Cannot route inbound calls.');
@@ -73,30 +88,17 @@ const server = http.createServer((req, res) => {
                 return;
             }
 
-            const rawFrom = params.From || params.from || '';
-            // Normalize caller ID: ensure it starts with + 
-            const from = rawFrom && !rawFrom.startsWith('+') ? `+${rawFrom}` : (rawFrom || 'Unknown');
-            console.log(`-> Inbound call from ${from}, ringing endpoint: ${sipEndpoint}`);
+            // Normalize caller ID: add + prefix if it's a plain number
+            const from = rawFrom && !rawFrom.startsWith('+') && !rawFrom.startsWith('sip:')
+                ? `+${rawFrom}`
+                : rawFrom || 'Unknown';
+
+            console.log(`-> PSTN inbound from ${from}, ringing endpoint: ${sipEndpoint}`);
 
             const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Dial callerId="${from}" timeout="30">
         <User>${sipEndpoint}</User>
-    </Dial>
-</Response>`;
-
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'text/xml');
-            res.end(xmlResponse);
-
-        } else {
-            // ── Outbound: browser -> PSTN number ──
-            console.log(`-> Outbound call, bridging to: ${destination}`);
-
-            const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Dial callerId="${callerId}">
-        <Number>${destination}</Number>
     </Dial>
 </Response>`;
 
