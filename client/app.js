@@ -4,6 +4,7 @@
 
 let vobiz = null;
 let isMuted = false;
+let audioAttached = false;
 
 // ===== Logging =====
 function log(msg, type = 'info') {
@@ -92,6 +93,8 @@ function doLogin() {
         });
 
         vobiz.client.on('onCallAnswered', (callInfo) => {
+            if (audioAttached) return; // guard against duplicate event
+            audioAttached = true;
             log(`✅ Call answered! (${callInfo?.callUUID || ''})`, 'success');
             setStatus('In Call', 'in-call');
             hideIncomingBanner();
@@ -102,6 +105,7 @@ function doLogin() {
         vobiz.client.on('onCallTerminated', (callInfo) => {
             log(`📴 Call ended: ${callInfo?.reason || 'Terminated'}`, 'warning');
             setStatus('Registered', 'online');
+            audioAttached = false;
             hideCallUI();
             hideIncomingBanner();
         });
@@ -109,6 +113,7 @@ function doLogin() {
         vobiz.client.on('onCallFailed', (callInfo) => {
             log(`❌ Call failed: ${callInfo?.reason || 'Unknown'}`, 'error');
             setStatus('Registered', 'online');
+            audioAttached = false;
             hideCallUI();
             hideIncomingBanner();
         });
