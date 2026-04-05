@@ -76,12 +76,21 @@ const server = http.createServer((req, res) => {
             const rawFrom = params.From || params.from || '';
             // Normalize caller ID: ensure it starts with + 
             const from = rawFrom && !rawFrom.startsWith('+') ? `+${rawFrom}` : (rawFrom || 'Unknown');
-            console.log(`-> Inbound call from ${from}, ringing endpoint: ${sipEndpoint}`);
+            // Extract just the username from the SIP URI (e.g. sip:user@registrar.vobiz.ai -> user)
+            // Then reconstruct with sip.vobiz.ai which is the domain Vobiz uses to locate
+            // registered WebRTC/SIP endpoints internally.
+            let sipUser = sipEndpoint;
+            const sipMatch = sipEndpoint.match(/^sip:(.*?)@/);
+            if (sipMatch && sipMatch[1]) {
+                sipUser = `sip:${sipMatch[1]}@sip.vobiz.ai`;
+            }
+
+            console.log(`-> Inbound call from ${from}, ringing endpoint: ${sipUser}`);
 
             const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Dial callerId="${from}" timeout="30">
-        <User>${sipEndpoint}</User>
+        <User>${sipUser}</User>
     </Dial>
 </Response>`;
 
