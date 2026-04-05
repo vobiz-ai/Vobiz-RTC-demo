@@ -73,12 +73,14 @@ const server = http.createServer((req, res) => {
                 return;
             }
 
-            const from = params.From || params.from || 'Unknown';
+            const rawFrom = params.From || params.from || '';
+            // Normalize caller ID: ensure it starts with + 
+            const from = rawFrom && !rawFrom.startsWith('+') ? `+${rawFrom}` : (rawFrom || 'Unknown');
             console.log(`-> Inbound call from ${from}, ringing endpoint: ${sipEndpoint}`);
 
             const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Dial callerId="${from}">
+    <Dial callerId="${from}" timeout="30">
         <User>${sipEndpoint}</User>
     </Dial>
 </Response>`;
