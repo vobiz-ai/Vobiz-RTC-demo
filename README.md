@@ -76,9 +76,9 @@ Edit `.env` and set both variables:
 CALLER_ID=+1234567890
 
 # Your SIP Endpoint URI for inbound calls (PSTN -> browser).
-# Format: sip:<username>@sip.vobiz.ai
-# The username is what you set when creating the endpoint in the Vobiz Dashboard.
-SIP_ENDPOINT=sip:myusername@sip.vobiz.ai
+# Copy this from: Vobiz Dashboard > Voice > Endpoints > your endpoint > SIP Configuration > SIP URI
+# Format: sip:<username>@registrar.vobiz.ai
+SIP_ENDPOINT=sip:myusername@registrar.vobiz.ai
 ```
 
 ### Step 3: Start the backend
@@ -162,9 +162,9 @@ For someone to call your Vobiz number and have it ring in the browser:
 
 1. Make sure `SIP_ENDPOINT` is set in `.env`:
    ```env
-   SIP_ENDPOINT=sip:myusername@sip.vobiz.ai
+   SIP_ENDPOINT=sip:myusername@registrar.vobiz.ai
    ```
-   Replace `myusername` with the **Username** of the SIP Endpoint you created in Step 5.
+   Find the exact SIP URI in the Vobiz Dashboard under **Voice > Endpoints > your endpoint > SIP Configuration > SIP URI**. Copy it directly from there.
 
 2. Your Vobiz phone number must be linked to the Application (the one with the Answer URL set). Do this in the Vobiz Dashboard under **Voice > Numbers** — assign the number to your Application.
 
@@ -249,7 +249,7 @@ vobiz-sdk-example/
 - Make sure the Endpoint exists at [console.vobiz.ai/app/voice/endpoints](https://console.vobiz.ai/app/voice/endpoints).
 
 **Inbound call doesn't ring in the browser**
-- Check that `SIP_ENDPOINT` is set correctly in `.env` — format must be `sip:username@sip.vobiz.ai`.
+- Check that `SIP_ENDPOINT` is set correctly in `.env` — copy it exactly from the **SIP URI** field in your endpoint details page. Format: `sip:username@registrar.vobiz.ai`.
 - Make sure your Vobiz phone number is linked to the Application in the Dashboard (**Voice > Numbers**).
 - The browser endpoint must be **registered** (logged in) before a call arrives — calls won't queue if the endpoint is offline.
 - Check the backend logs for `-> Inbound call from ...` to confirm the server is receiving and routing the call.
