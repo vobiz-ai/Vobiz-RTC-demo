@@ -97,7 +97,7 @@ const server = http.createServer((req, res) => {
 
             const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Dial callerId="${from}" timeout="30">
+    <Dial callerId="${callerId}" timeout="30">
         <User>${sipEndpoint}</User>
     </Dial>
 </Response>`;
