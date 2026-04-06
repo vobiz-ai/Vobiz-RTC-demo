@@ -8,6 +8,6 @@
     },
     "dependencies": {
         "dotenv": "^17.3.1",
-        "vobiz-webrtc-sdk": "^1.0.2"
+        "vobiz-webrtc-sdk": "^1.0.3"
     }
 }
