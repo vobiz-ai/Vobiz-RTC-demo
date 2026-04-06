@@ -5,6 +5,7 @@
 let vobiz = null;
 let isMuted = false;
 let audioAttached = false;
+let isInCall = false; // tracks whether a call is currently active
 
 // ===== Logging =====
 function log(msg, type = 'info') {
@@ -95,9 +96,11 @@ function doLogin() {
         vobiz.client.on('onCallAnswered', (callInfo) => {
             if (audioAttached) return; // guard against duplicate event
             audioAttached = true;
+            isInCall = true;
             log(`✅ Call answered! (${callInfo?.callUUID || ''})`, 'success');
             setStatus('In Call', 'in-call');
             hideIncomingBanner();
+            hideCallWaitingBanner();
             showInCallUI();
             attachRemoteAudio();
         });
@@ -106,28 +109,43 @@ function doLogin() {
             log(`📴 Call ended: ${callInfo?.reason || 'Terminated'}`, 'warning');
             setStatus('Registered', 'online');
             audioAttached = false;
+            isInCall = false;
             hideCallUI();
             hideIncomingBanner();
+            hideCallWaitingBanner();
         });
 
         vobiz.client.on('onCallFailed', (callInfo) => {
             log(`❌ Call failed: ${callInfo?.reason || 'Unknown'}`, 'error');
             setStatus('Registered', 'online');
             audioAttached = false;
+            isInCall = false;
             hideCallUI();
             hideIncomingBanner();
+            hideCallWaitingBanner();
         });
 
         vobiz.client.on('onIncomingCall', (callerName, extraHeaders) => {
             log(`📲 Incoming call from: ${callerName}`, 'event');
-            setStatus('Incoming Call', 'in-call');
-            showIncomingBanner(callerName);
+            if (isInCall) {
+                // Already in a call — show call waiting notification instead
+                setStatus('Call Waiting', 'in-call');
+                showCallWaitingBanner(callerName);
+            } else {
+                setStatus('Incoming Call', 'in-call');
+                showIncomingBanner(callerName);
+            }
         });
 
         vobiz.client.on('onIncomingCallCanceled', () => {
             log('📴 Incoming call cancelled by caller', 'warning');
-            setStatus('Registered', 'online');
-            hideIncomingBanner();
+            if (isInCall) {
+                setStatus('In Call', 'in-call');
+                hideCallWaitingBanner();
+            } else {
+                setStatus('Registered', 'online');
+                hideIncomingBanner();
+            }
         });
 
         vobiz.client.on('onMediaPermission', (granted) => {
@@ -193,6 +211,7 @@ function doAnswer() {
         vobiz.client.answer();
         log('Answering call...', 'success');
         hideIncomingBanner();
+        hideCallWaitingBanner();
         showInCallUI();
     }
 }
@@ -202,7 +221,23 @@ function doReject() {
         vobiz.client.reject();
         log('Call rejected', 'warning');
         hideIncomingBanner();
-        setStatus('Registered', 'online');
+        hideCallWaitingBanner();
+        if (!isInCall) setStatus('Registered', 'online');
+    }
+}
+
+// Switch to waiting call: hang up current, answer the new one
+function doSwitchCall() {
+    if (vobiz) {
+        log('Switching to waiting call...', 'event');
+        vobiz.client.hangup();
+        // Small delay to let hangup complete before answering
+        setTimeout(() => {
+            vobiz.client.answer();
+            log('Answering waiting call...', 'success');
+            hideCallWaitingBanner();
+            showInCallUI();
+        }, 500);
     }
 }
 
@@ -280,6 +315,17 @@ function toggleMute() {
         log('🔇 Muted', 'warning');
     }
     isMuted = !isMuted;
+}
+
+// ===== Call Waiting Banner =====
+function showCallWaitingBanner(callerName) {
+    const banner = document.getElementById('callWaitingBanner');
+    document.getElementById('waitingCaller').textContent = callerName || 'Unknown';
+    banner.style.display = 'flex';
+}
+
+function hideCallWaitingBanner() {
+    document.getElementById('callWaitingBanner').style.display = 'none';
 }
 
 // ===== Incoming Banner =====

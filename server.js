@@ -104,11 +104,16 @@ const server = http.createServer((req, res) => {
 
             console.log(`-> PSTN inbound from ${from}, ringing endpoint: ${sipEndpoint}`);
 
+            // If the endpoint is busy (already in a call), Vobiz will complete the <Dial>
+            // immediately and fall through to the <Speak> + <Hangup> below, playing a
+            // friendly message to the caller instead of a silent busy tone.
             const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Dial callerId="${callerId}" timeout="30">
         <User>${sipEndpoint}</User>
     </Dial>
+    <Speak>The user is currently on another call. Please try again later. Goodbye.</Speak>
+    <Hangup/>
 </Response>`;
 
             res.statusCode = 200;

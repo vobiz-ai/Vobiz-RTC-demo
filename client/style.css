@@ -134,6 +134,20 @@ body {
   }
 }
 
+/* ======== Call Waiting Banner ======== */
+.call-waiting-banner {
+  position: sticky;
+  top: 57px;
+  z-index: 89;
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  padding: 14px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(217, 119, 6, 0.35);
+  animation: slideDown 0.3s ease;
+}
+
 /* ======== Incoming Call Banner ======== */
 .incoming-banner {
   position: sticky;
