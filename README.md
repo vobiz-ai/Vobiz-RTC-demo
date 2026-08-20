@@ -1,4 +1,4 @@
-# Vobiz WebRTC SDK Example
+# Vobiz WebRTC Browser SDK — Softphone Starter Kit
 
 [![Vobiz](https://img.shields.io/badge/Vobiz-WebRTC_SDK-blue?style=for-the-badge)](https://vobiz.ai)
 [![Demo](https://img.shields.io/badge/Live_Demo-rtc--demo.vobiz.ai-green?style=for-the-badge)](https://rtc-demo.vobiz.ai/)
@@ -37,9 +37,9 @@ Browser (client/)              Vobiz Platform          Backend (server.js)
 ```
 PSTN caller                    Vobiz Platform          Backend (server.js)
      |                              |                          |
-     |--- calls +917971543187 ----->|                          |
+     |--- calls +15550003333 ------>|                          |
      |                              |--- POST / -------------->|
-     |                              |    From=9148227303       |
+     |                              |    From=5550003333       |
      |                              |    RouteType=(empty)     |
      |                              |<-- <Dial><User> ---------|
      |                              |--- SIP INVITE ---------->| (browser endpoint)
@@ -49,7 +49,7 @@ PSTN caller                    Vobiz Platform          Backend (server.js)
 
 **How direction is detected:** The backend checks the `From` field and `RouteType` param Vobiz sends:
 - `From=sip:user@registrar.vobiz.ai` or `RouteType=sip` → **SDK outbound** → `<Dial><Number>`
-- `From=9148227303` (plain number), `RouteType` empty → **PSTN inbound** → `<Dial><User>`
+- `From=5550003333` (plain number), `RouteType` empty → **PSTN inbound** → `<Dial><User>`
 
 ---
 
@@ -174,16 +174,16 @@ The frontend runs at `http://localhost:8080`.
 1. Open `http://localhost:8080`
 2. Enter your **Endpoint Username** and **Password** from Step 5
 3. Click **Connect & Register** — wait for `Successfully registered with Vobiz!` in the logs
-4. Type a phone number in E.164 format (e.g. `+919148227303`) and click **Call**
+4. Type a phone number in E.164 format (e.g. `+15550003333`) and click **Call**
 
 Backend logs will show:
 ```
--> SDK outbound call, bridging to: +919148227303
+-> SDK outbound call, bridging to: +15550003333
 ```
 
 Browser logs will show:
 ```
-Calling +919148227303...
+Calling +15550003333...
 Ringing... (call-id)
 Call answered! (call-id)
 ```
@@ -199,7 +199,7 @@ Call answered! (call-id)
 
 Backend logs will show:
 ```
--> PSTN inbound from +919148227303, ringing endpoint: sip:myuser123@registrar.vobiz.ai
+-> PSTN inbound from +15550003333, ringing endpoint: sip:myuser123@registrar.vobiz.ai
 ```
 
 > [!IMPORTANT]
@@ -233,7 +233,7 @@ vobiz-sdk-example/
 
 **`Call failed: Unknown` in browser logs**
 - The Answer URL returned an error. Check your `npm start` terminal for errors.
-- Make sure `CALLER_ID` in `.env` is E.164 format (e.g. `+917971543187`).
+- Make sure `CALLER_ID` in `.env` is E.164 format (e.g. `+15550003333`).
 
 **Stuck on "Connecting..." / never registers**
 - Double-check Endpoint username and password — usernames are alphanumeric only.
@@ -262,4 +262,19 @@ vobiz-sdk-example/
 
 ---
 
-Developed by the **Vobiz Team**.
+## Built by Team Vobiz
+
+[Vobiz](https://vobiz.ai) is a programmable voice & SIP-trunking platform for
+voice APIs, SIP trunking, and AI voice agents. This repository is built and
+maintained by the Vobiz team.
+
+**Maintainer:** Piyush Sahoo — [piyush@vobiz.ai](mailto:piyush@vobiz.ai) · [LinkedIn](https://www.linkedin.com/in/piyush-s713/)
+
+Questions, or want to talk through an integration? Open an issue on this repo,
+or reach out directly at [piyush@vobiz.ai](mailto:piyush@vobiz.ai).
+
+**Useful links:** [Docs](https://docs.vobiz.ai) · [API reference](https://docs.vobiz.ai/api-reference) · [Sign up](https://vobiz.ai)
+
+## License
+
+[MIT](./LICENSE) © Vobiz

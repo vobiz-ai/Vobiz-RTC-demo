@@ -2,6 +2,7 @@
     "name": "vobiz-sdk-example",
     "version": "1.0.0",
     "description": "Example implementation of Vobiz WebRTC SDK with Dynamic Answer URL backend",
+    "license": "MIT",
     "scripts": {
         "start": "node server.js",
         "client": "cd client && npx http-server . -p 8080"

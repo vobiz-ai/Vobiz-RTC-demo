@@ -11,10 +11,10 @@ const port = 3000;
 // Call types Vobiz sends to this Answer URL:
 //
 //   SDK outbound (browser -> PSTN):
-//     From=sip:user@registrar.vobiz.ai  RouteType=sip  To=919148227303
+//     From=sip:user@registrar.vobiz.ai  RouteType=sip  To=15550003333
 //
 //   PSTN inbound (phone -> your Vobiz number):
-//     From=9148227303  RouteType=(empty)  To=07971543187  Direction=inbound
+//     From=5550003333  RouteType=(empty)  To=15550003333  Direction=inbound
 
 // Strip non-digit characters for loose number comparison
 const digitsOnly = (s) => (s || '').replace(/\D/g, '');
