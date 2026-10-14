@@ -337,6 +337,55 @@ Goodbye."* and the call is hung up.
 
 ---
 
+## Authentication: password or access token (JWT)
+
+The client offers two ways to register, selectable with the tabs in the Authentication panel.
+
+| | Password | Access token (JWT) |
+|---|---|---|
+| What the browser holds | The endpoint's long-lived SIP password | A token that expires (default 1 hour) |
+| Who authenticates | SIP digest against `registrar.vobiz.ai` | Your backend mints the token with the account Auth ID and Auth Token, which never leave the server |
+| SDK call | `client.login(username, password)` | `client.loginWithAccessTokenGenerator({ getAccessToken })` |
+| Identity on the registrar | `<username>` | `<JWT_SUB>_<VOBIZ_AUTH_ID>` |
+| Scoping | None | `per.voice.incoming_allow` / `outgoing_allow` claims |
+| Refresh | Not needed | The SDK calls `getAccessToken()` again 60 s before expiry and re-registers |
+| Revocation | Change the endpoint password | Stop issuing tokens; the current one dies at `exp` |
+
+Token mode mirrors how Twilio (AccessToken + VoiceGrant), Telnyx (`login_token`) and Plivo-style
+browser SDKs work: the secret stays on the server, the browser gets a short-lived credential.
+
+### How the token flow works here
+
+1. The browser calls `POST /token` on `server.js`.
+2. The server builds the claims (`iss`, `sub`, `nbf`, `exp`, `per`, optional `app`) and asks
+   `POST https://api.vobiz.ai/api/v1/Account/{auth_id}/JWT/Token/` to sign them.
+3. The browser passes the token to the SDK, which registers over WSS with an `X-Vobiz-Jwt` header.
+   The registrar validates signature, `nbf`/`exp` and grants, then answers `200 OK` with the
+   token's expiry echoed back.
+4. Before the token expires the SDK fetches a new one and re-registers. Outbound calls carry the
+   token on the INVITE; inbound routing checks `incoming_allow`.
+
+Configure it in `.env`:
+
+```dotenv
+VOBIZ_AUTH_ID=MA_XXXXXXXX
+VOBIZ_AUTH_TOKEN=your_auth_token
+JWT_SUB=webrtc-demo          # browser registers as webrtc-demo_MA_XXXXXXXX
+JWT_TTL_SECONDS=3600         # 180 .. 86400
+# JWT_APP_ID=...             # optional; defaults to the account's default application
+```
+
+For inbound calls in token mode you can leave `SIP_ENDPOINT` unset; the server dials
+`sip:<JWT_SUB>_<VOBIZ_AUTH_ID>@registrar.vobiz.ai` automatically.
+
+> [!WARNING]
+> `POST /token` is unauthenticated in this demo. In a real app, mint a token only after your own
+> user has signed in, and put *that* user's identity in `sub`.
+
+> [!NOTE]
+> `JWT_LOCAL_SIGN=1` makes the server sign tokens itself with the same HS256 scheme the Vobiz API
+> uses, as a fallback while the API's `JWT/Token` route is being rolled out. Leave it at `0` otherwise.
+
 ## Browser SDK reference
 
 Everything below is what `client/app.js` actually uses. The SDK is loaded from
