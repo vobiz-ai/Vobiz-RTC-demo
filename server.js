@@ -19,8 +19,99 @@ const port = 3000;
 // Strip non-digit characters for loose number comparison
 const digitsOnly = (s) => (s || '').replace(/\D/g, '');
 
+
+// ── Access-token (JWT) minting for the browser client ──────────────────────
+// The browser never sees VOBIZ_AUTH_TOKEN. It asks this server for a short-lived
+// token and logs in with vobiz.client.loginWithAccessTokenGenerator(). Gate this
+// route behind your own user session before using it outside a demo.
+const crypto = require('crypto');
+
+const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+
+// Same shape backend-apis produces: HS256, cty "auris;v=1", signed with the Auth Token.
+function signLocalToken(claims, authToken) {
+    const header = { alg: 'HS256', typ: 'JWT', cty: 'auris;v=1' };
+    const input = `${b64url(header)}.${b64url(claims)}`;
+    const sig = crypto.createHmac('sha256', authToken).update(input).digest('base64url');
+    return `${input}.${sig}`;
+}
+
+function jwtIdentity() {
+    const authId = process.env.VOBIZ_AUTH_ID;
+    const sub = process.env.JWT_SUB || 'webrtc-demo';
+    return authId ? { sub, sipUsername: `${sub}_${authId}` } : null;
+}
+
+async function mintToken() {
+    const authId = process.env.VOBIZ_AUTH_ID;
+    const authToken = process.env.VOBIZ_AUTH_TOKEN;
+    if (!authId || !authToken) throw new Error('VOBIZ_AUTH_ID and VOBIZ_AUTH_TOKEN must be set in .env');
+
+    const { sub, sipUsername } = jwtIdentity();
+    const ttl = Number(process.env.JWT_TTL_SECONDS || 3600);          // 3 min ≤ ttl ≤ 24 h
+    const now = Math.floor(Date.now() / 1000);
+    const claims = {
+        iss: authId,
+        sub,
+        nbf: now,
+        exp: now + ttl,
+        per: { voice: { incoming_allow: true, outgoing_allow: true } },
+    };
+    if (process.env.JWT_APP_ID) claims.app = process.env.JWT_APP_ID;
+
+    const base = (process.env.VOBIZ_API_BASE || 'https://api.vobiz.ai/api/v1').replace(/\/$/, '');
+    let token;
+    let mode = 'api';
+    try {
+        const r = await fetch(`${base}/Account/${authId}/JWT/Token/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Basic ${Buffer.from(`${authId}:${authToken}`).toString('base64')}`,
+                'X-Auth-ID': authId,
+                'X-Auth-Token': authToken,
+            },
+            body: JSON.stringify(claims),
+        });
+        const text = await r.text();
+        if (!r.ok) throw new Error(`Vobiz API ${r.status}: ${text.slice(0, 160)}`);
+        token = JSON.parse(text).token;
+    } catch (err) {
+        if (process.env.JWT_LOCAL_SIGN !== '1') throw err;
+        console.warn(`[token] API mint failed (${err.message}). Signing locally because JWT_LOCAL_SIGN=1.`);
+        token = signLocalToken(claims, authToken);
+        mode = 'local';
+    }
+    return { token, mode, sub, exp: claims.exp, sip_username: sipUsername };
+}
+
+function handleTokenRequest(req, res) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+    mintToken()
+        .then((body) => {
+            console.log(`[token] issued (${body.mode}) for ${body.sip_username}, exp ${new Date(body.exp * 1000).toISOString()}`);
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(body));
+        })
+        .catch((err) => {
+            console.error(`[token] ${err.message}`);
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: err.message }));
+        });
+}
+
 const server = http.createServer((req, res) => {
     console.log(`[${new Date().toISOString()}] Request: ${req.method} ${req.url}`);
+
+    if (new URL(req.url, `http://localhost:${port}`).pathname === '/token') {
+        handleTokenRequest(req, res);
+        return;
+    }
 
     let body = '';
     req.on('data', chunk => { body += chunk.toString(); });
@@ -88,7 +179,9 @@ const server = http.createServer((req, res) => {
 
         } else {
             // ── PSTN Inbound: phone -> your Vobiz number -> ring browser ──
-            const sipEndpoint = process.env.SIP_ENDPOINT;
+            // With JWT login the browser registers as <JWT_SUB>_<VOBIZ_AUTH_ID>; fall back to that.
+            const jwtId = jwtIdentity();
+            const sipEndpoint = process.env.SIP_ENDPOINT || (jwtId && `sip:${jwtId.sipUsername}@registrar.vobiz.ai`);
             if (!sipEndpoint) {
                 console.error('SIP_ENDPOINT is not set in .env. Cannot route inbound calls.');
                 res.statusCode = 500;
@@ -136,6 +229,9 @@ server.listen(port, () => {
 
   3. For inbound calls, set SIP_ENDPOINT in .env to your
      endpoint's SIP URI (e.g. sip:myuser@registrar.vobiz.ai)
+
+  4. For JWT login, set VOBIZ_AUTH_ID / VOBIZ_AUTH_TOKEN in .env.
+     The browser fetches short-lived tokens from POST /token.
 -------------------------------------------------------
     `);
 });

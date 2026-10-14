@@ -671,3 +671,16 @@ body {
     height: 24px;
   }
 }
+
+/* ===== Auth mode tabs & token info ===== */
+.auth-tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+.auth-tab {
+    flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
+    background: transparent; color: inherit; font: inherit; font-size: 13px; cursor: pointer; opacity: 0.7;
+}
+.auth-tab.active { opacity: 1; border-color: currentColor; font-weight: 600; }
+.field-hint { font-size: 12px; opacity: 0.7; margin-top: 6px; line-height: 1.4; }
+.field-hint code { font-size: 11px; }
+.token-info { font-size: 13px; margin: 12px 0; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); line-height: 1.7; }
+.token-label { opacity: 0.7; display: inline-block; min-width: 110px; }
+.token-note { opacity: 0.6; font-size: 12px; }

@@ -67,20 +67,45 @@
             <section class="panel login-panel" id="loginPanel">
                 <div class="panel-header">
                     <h2>🔐 Authentication</h2>
-                    <p class="panel-desc">Enter your Vobiz endpoint credentials</p>
+                    <p class="panel-desc">Sign in with endpoint credentials or a short-lived access token</p>
                 </div>
-                <div class="form-group">
-                    <label for="username">Endpoint Username</label>
-                    <input type="text" id="username" placeholder="e.g. user123456789" autocomplete="off">
+                <div class="auth-tabs">
+                    <button class="auth-tab active" data-mode="password" onclick="setAuthMode('password')">Password</button>
+                    <button class="auth-tab" data-mode="token" onclick="setAuthMode('token')">Access token (JWT)</button>
                 </div>
-                <div class="form-group">
-                    <label for="password">Endpoint Password</label>
-                    <input type="password" id="password" placeholder="Enter password" autocomplete="off">
+
+                <div id="passwordAuth">
+                    <div class="form-group">
+                        <label for="username">Endpoint Username</label>
+                        <input type="text" id="username" placeholder="e.g. user123456789" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Endpoint Password</label>
+                        <input type="password" id="password" placeholder="Enter password" autocomplete="off">
+                    </div>
+                    <button class="btn btn-primary btn-block" id="loginBtn" onclick="doLogin()">
+                        <span class="btn-text">Connect & Register</span>
+                        <span class="btn-loader" style="display:none"></span>
+                    </button>
                 </div>
-                <button class="btn btn-primary btn-block" id="loginBtn" onclick="doLogin()">
-                    <span class="btn-text">Connect & Register</span>
-                    <span class="btn-loader" style="display:none"></span>
-                </button>
+
+                <div id="tokenAuth" style="display:none">
+                    <div class="form-group">
+                        <label for="tokenServer">Token server</label>
+                        <input type="text" id="tokenServer" value="http://localhost:3000" autocomplete="off">
+                        <p class="field-hint">Your backend holds the Auth Token and mints a JWT at <code>POST /token</code>. The browser never sees the secret.</p>
+                    </div>
+                    <button class="btn btn-primary btn-block" id="tokenLoginBtn" onclick="doTokenLogin()">
+                        <span class="btn-text">Fetch token & Register</span>
+                        <span class="btn-loader" style="display:none"></span>
+                    </button>
+                </div>
+
+                <div class="token-info" id="tokenInfo" style="display:none">
+                    <div><span class="token-label">Identity</span> <span id="tokenIdentity"></span></div>
+                    <div><span class="token-label">Token expires</span> <span id="tokenExpiry"></span> <span class="token-note">(auto-refreshed by the SDK)</span></div>
+                </div>
+
                 <button class="btn btn-danger btn-block" id="logoutBtn" onclick="doLogout()" style="display:none">
                     Disconnect
                 </button>
