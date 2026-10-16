@@ -151,6 +151,27 @@
                 </div>
             </section>
 
+            <!-- Fraud guard (vobiz-call-guard live feed) -->
+            <section class="panel guard-panel" id="guardPanel">
+                <div class="panel-header">
+                    <h2>🛡️ Fraud detection</h2>
+                    <span class="guard-badge idle" id="guardBadge">Not connected</span>
+                </div>
+                <p class="panel-desc">Live verdicts from the call guard: scam intent from the transcript, synthetic-voice score on the other party, and the warning it speaks into your leg.</p>
+                <div class="guard-toolbar">
+                    <input type="text" id="guardUrl" placeholder="http://localhost:8090/events" autocomplete="off">
+                    <button class="btn btn-sm" id="guardConnectBtn" onclick="connectGuard()">Connect</button>
+                    <button class="btn btn-sm" onclick="clearGuard()">Clear</button>
+                </div>
+                <div class="guard-summary" id="guardSummary">
+                    <span class="guard-chip muted" id="guardDeepfake">Voice: no verdict yet</span>
+                    <span class="guard-chips" id="guardChips"></span>
+                </div>
+                <div class="log-container guard-list" id="guardList">
+                    <div class="log-entry info">Waiting for a call…</div>
+                </div>
+            </section>
+
             <!-- Event Log -->
             <section class="panel log-panel">
                 <div class="panel-header">

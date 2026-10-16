@@ -436,3 +436,121 @@ function hideCallUI() {
 // ===== Init =====
 log('Vobiz Browser SDK Console loaded', 'info');
 log('Choose Password (endpoint credentials) or Access token (JWT from your backend), then connect', 'info');
+
+// ===== Fraud guard: live feed from vobiz-call-guard (GET /events, Server-Sent Events) =====
+let guardSource = null;
+const GUARD_LABELS = {
+    otp_request: 'OTP request', bank_impersonation: 'Bank impersonation', urgency_payment: 'Urgency / payment pressure',
+    account_impersonation: 'Account impersonation', vishing: 'Vishing', coercion_manipulation: 'Coercion',
+    bargaining_manipulation: 'Bargaining manipulation', feigned_ignorance: 'Feigned ignorance',
+};
+const guardLabel = (c) => GUARD_LABELS[c] || c.replace(/_/g, ' ');
+
+function guardEntry(msg, type = 'info') {
+    const list = document.getElementById('guardList');
+    const entry = document.createElement('div');
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+    entry.className = `log-entry ${type}`;
+    entry.innerHTML = `<span class="log-time">${time}</span>${msg}`;
+    list.appendChild(entry);
+    list.scrollTop = list.scrollHeight;
+}
+
+function setGuardBadge(text, cls) {
+    const b = document.getElementById('guardBadge');
+    b.textContent = text; b.className = `guard-badge ${cls}`;
+}
+
+function resetGuardCall() {
+    document.getElementById('guardChips').innerHTML = '';
+    const df = document.getElementById('guardDeepfake');
+    df.textContent = 'Voice: no verdict yet'; df.className = 'guard-chip muted';
+}
+
+function addGuardChip(category) {
+    const chips = document.getElementById('guardChips');
+    if ([...chips.children].some((c) => c.dataset.cat === category)) return;
+    const chip = document.createElement('span');
+    chip.className = 'guard-chip'; chip.dataset.cat = category; chip.textContent = guardLabel(category);
+    chips.appendChild(chip);
+}
+
+function handleGuardEvent(ev) {
+    const esc = (t) => String(t ?? '').replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+    switch (ev.type) {
+        case 'stream_started':
+            resetGuardCall();
+            setGuardBadge('Monitoring call', 'live');
+            guardEntry(`🎧 Guard attached — protecting <b>${esc(ev.protect_leg)}</b>, screening the <b>${esc(ev.suspect_track)}</b> voice`, 'event');
+            break;
+        case 'transcript':
+            guardEntry(`“${esc(ev.text)}”`, 'transcript');
+            break;
+        case 'synthetic_voice': {
+            const df = document.getElementById('guardDeepfake');
+            df.textContent = `Voice: SYNTHETIC (${Math.round(ev.deepfake_score * 100)}% of speech, conf ${Number(ev.confidence).toFixed(2)})`;
+            df.className = 'guard-chip synthetic';
+            guardEntry(`🤖 Synthetic voice detected after ${(ev.speech_ms / 1000).toFixed(1)}s of speech (confidence ${Number(ev.confidence).toFixed(2)})`, 'warning');
+            break;
+        }
+        case 'scam_intent':
+            addGuardChip(ev.category);
+            guardEntry(`🚩 <b>${esc(guardLabel(ev.category))}</b> <span class="log-time">via ${esc(ev.source)}, ${Math.round(ev.confidence * 100)}%</span><br>${esc(ev.evidence)}`, 'warning');
+            break;
+        case 'fraud_detection_result':
+            if (ev.action_taken === 'warned') {
+                setGuardBadge('⚠ SCAM — WARNING PLAYED', 'alert');
+                guardEntry(`🔊 Safety warning spoken into the <b>${esc(ev.protect_leg)}</b> at ${(ev.t_offset_ms / 1000).toFixed(1)}s. Risk ${ev.risk}. Categories: ${ev.categories.map(guardLabel).map(esc).join(', ')}`, 'alert');
+            } else if (ev.action_taken === 'notified') {
+                guardEntry(`ℹ️ Synthetic voice only — notified, no warning (risk ${ev.risk})`, 'warning');
+            } else {
+                guardEntry(`Result: ${esc(ev.action_taken)} (risk ${ev.risk})`, 'warning');
+            }
+            break;
+        case 'risk_update':
+            break; // chips already cover it
+        case 'hung_up':
+            guardEntry('⛔ Guard hung up the call (block mode)', 'alert');
+            break;
+        case 'vendor_error':
+            guardEntry(`Vendor error (${esc(ev.vendor)}): ${esc(ev.error)}`, 'error');
+            break;
+        case 'stream_ended': {
+            const df = document.getElementById('guardDeepfake');
+            if (df.classList.contains('muted')) { df.textContent = ev.deepfake_flagged ? 'Voice: synthetic' : 'Voice: real (no synthetic verdict)'; df.className = `guard-chip ${ev.deepfake_flagged ? 'synthetic' : 'real'}`; }
+            else if (!ev.deepfake_flagged) { df.textContent = 'Voice: real'; df.className = 'guard-chip real'; }
+            setGuardBadge(ev.warned ? 'Call ended — scam warned' : (ev.categories.length ? 'Call ended — intent seen' : 'Call ended — clean'), ev.warned ? 'alert' : 'done');
+            guardEntry(`📴 Call ended after ${(ev.duration_ms / 1000).toFixed(0)}s — ${ev.categories.length ? ev.categories.map(guardLabel).map(esc).join(', ') : 'no scam intent'}; voice ${ev.deepfake_flagged ? 'synthetic' : 'real'}`, ev.warned ? 'alert' : 'success');
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+function connectGuard() {
+    const input = document.getElementById('guardUrl');
+    const url = (input.value.trim() || input.placeholder).replace(/\/$/, '');
+    try { localStorage.setItem('guardEventsUrl', url); } catch {}
+    if (guardSource) { guardSource.close(); guardSource = null; }
+    setGuardBadge('Connecting…', 'idle');
+    guardSource = new EventSource(url);
+    guardSource.onopen = () => { setGuardBadge('Connected — idle', 'live'); guardEntry(`Connected to guard at ${url}`, 'success'); };
+    guardSource.onmessage = (m) => { try { handleGuardEvent(JSON.parse(m.data)); } catch (e) { console.warn('guard event parse', e); } };
+    guardSource.onerror = () => { setGuardBadge('Disconnected — retrying', 'idle'); };
+}
+
+function clearGuard() {
+    document.getElementById('guardList').innerHTML = '';
+    resetGuardCall();
+    guardEntry('Cleared');
+}
+
+(function initGuard() {
+    const input = document.getElementById('guardUrl');
+    if (!input) return;
+    let saved = '';
+    try { saved = localStorage.getItem('guardEventsUrl') || ''; } catch {}
+    input.value = saved;
+    connectGuard();
+})();

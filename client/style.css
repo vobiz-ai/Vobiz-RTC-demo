@@ -684,3 +684,23 @@ body {
 .token-info { font-size: 13px; margin: 12px 0; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); line-height: 1.7; }
 .token-label { opacity: 0.7; display: inline-block; min-width: 110px; }
 .token-note { opacity: 0.6; font-size: 12px; }
+
+/* ===== Fraud guard panel ===== */
+.guard-panel { grid-column: 1 / -1; }
+.guard-toolbar { display: flex; gap: 8px; margin: 12px 0; }
+.guard-toolbar input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border, #e5e7eb); border-radius: 8px; font: inherit; }
+.guard-badge { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; letter-spacing: 0.02em; }
+.guard-badge.idle { background: rgba(107, 114, 128, 0.12); color: #6b7280; }
+.guard-badge.live { background: rgba(34, 197, 94, 0.12); color: var(--green, #16a34a); }
+.guard-badge.alert { background: rgba(239, 68, 68, 0.15); color: var(--red, #dc2626); animation: guard-pulse 1.2s ease-in-out infinite; }
+.guard-badge.done { background: var(--accent-bg, rgba(249, 115, 22, 0.1)); color: var(--accent, #f97316); }
+@keyframes guard-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35); } 50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } }
+.guard-summary { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.guard-chips { display: contents; }
+.guard-chip { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: rgba(239, 68, 68, 0.1); color: var(--red, #dc2626); font-weight: 600; }
+.guard-chip.muted { background: rgba(107, 114, 128, 0.1); color: #6b7280; font-weight: 500; }
+.guard-chip.real { background: rgba(34, 197, 94, 0.12); color: var(--green, #16a34a); }
+.guard-chip.synthetic { background: rgba(239, 68, 68, 0.15); color: var(--red, #dc2626); }
+.guard-list { max-height: 320px; }
+.log-entry.transcript { color: #6b7280; }
+.log-entry.alert { color: var(--red, #dc2626); background: rgba(239, 68, 68, 0.1); font-weight: 600; }
