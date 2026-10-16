@@ -105,6 +105,28 @@ function handleTokenRequest(req, res) {
         });
 }
 
+// ── Call guard (fraud / deepfake detection) ────────────────────────────────
+// When GUARD_WSS_URL is set, every bridged call is forked to the guard service with a
+// one-way <Stream>. The element is non-blocking: Vobiz opens the WebSocket and moves on
+// to <Dial>, so the bridge itself is unchanged. The guard warns the protected leg via the
+// Speak REST API. protect=aleg means "the party that hit this Answer URL" (SDK outbound),
+// protect=bleg means "the party we dial" (PSTN inbound ringing our SIP user).
+const xmlAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+function guardStreamXml(protectLeg) {
+    const url = process.env.GUARD_WSS_URL;
+    if (!url) return '';
+    const headers = [`protect=${protectLeg}`];
+    if (process.env.GUARD_SHARED_SECRET) headers.push(`secret=${process.env.GUARD_SHARED_SECRET}`);
+    const cb = process.env.GUARD_STATUS_CALLBACK_URL
+        ? `\n        statusCallbackUrl="${xmlAttr(process.env.GUARD_STATUS_CALLBACK_URL)}" statusCallbackMethod="POST"`
+        : '';
+    return `
+    <Stream audioTrack="both" bidirectional="false"
+        contentType="audio/x-l16;rate=8000"
+        extraHeaders="${xmlAttr(headers.join(','))}"${cb}>${xmlAttr(url)}</Stream>`;
+}
+
 const server = http.createServer((req, res) => {
     console.log(`[${new Date().toISOString()}] Request: ${req.method} ${req.url}`);
 
@@ -167,7 +189,7 @@ const server = http.createServer((req, res) => {
             console.log(`-> SDK outbound call, bridging to: ${destination}`);
 
             const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
+<Response>${guardStreamXml('aleg')}
     <Dial callerId="${callerId}">
         <Number>${destination}</Number>
     </Dial>
@@ -201,7 +223,7 @@ const server = http.createServer((req, res) => {
             // immediately and fall through to the <Speak> + <Hangup> below, playing a
             // friendly message to the caller instead of a silent busy tone.
             const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
+<Response>${guardStreamXml('bleg')}
     <Dial callerId="${callerId}" timeout="30">
         <User>${sipEndpoint}</User>
     </Dial>
