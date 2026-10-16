@@ -244,6 +244,27 @@ ${targets.map((t) => `        <User>${t}</User>`).join('\n')}
     });
 });
 
+// ── Guard WebSocket proxy ─────────────────────────────────────────────────
+// Forward wss://<this-host>/stream upgrades to the local vobiz-call-guard so a single
+// public tunnel serves both the Answer URL and the <Stream> target.
+const net = require('net');
+const GUARD_LOCAL_ADDR = process.env.GUARD_LOCAL_ADDR || '127.0.0.1:8090';
+server.on('upgrade', (req, socket, head) => {
+    const pathname = new URL(req.url, `http://localhost:${port}`).pathname;
+    if (pathname !== '/stream') { socket.destroy(); return; }
+    const [host, upstreamPort] = GUARD_LOCAL_ADDR.split(':');
+    const upstream = net.connect(Number(upstreamPort), host, () => {
+        const lines = [`${req.method} ${req.url} HTTP/${req.httpVersion}`];
+        for (let i = 0; i < req.rawHeaders.length; i += 2) lines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);
+        upstream.write(lines.join('\r\n') + '\r\n\r\n');
+        if (head && head.length) upstream.write(head);
+        socket.pipe(upstream).pipe(socket);
+    });
+    upstream.on('error', (e) => { console.error(`[guard-proxy] ${e.message}`); socket.destroy(); });
+    socket.on('error', () => upstream.destroy());
+    console.log(`[${new Date().toISOString()}] [guard-proxy] ${pathname} -> ${GUARD_LOCAL_ADDR}`);
+});
+
 server.listen(port, () => {
     console.log(`
 -------------------------------------------------------
