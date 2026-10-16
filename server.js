@@ -202,9 +202,15 @@ const server = http.createServer((req, res) => {
         } else {
             // ── PSTN Inbound: phone -> your Vobiz number -> ring browser ──
             // With JWT login the browser registers as <JWT_SUB>_<VOBIZ_AUTH_ID>; fall back to that.
+            // Ring every identity the browser may be logged in as: the SIP endpoint (password login)
+            // and the JWT identity (access-token login). Vobiz dials sibling <User>s simultaneously
+            // and bridges the first one that answers.
             const jwtId = jwtIdentity();
-            const sipEndpoint = process.env.SIP_ENDPOINT || (jwtId && `sip:${jwtId.sipUsername}@registrar.vobiz.ai`);
-            if (!sipEndpoint) {
+            const targets = [];
+            if (process.env.SIP_ENDPOINT) targets.push(process.env.SIP_ENDPOINT);
+            if (jwtId) targets.push(`sip:${jwtId.sipUsername}@registrar.vobiz.ai`);
+            const sipEndpoint = targets.join(', ');
+            if (!targets.length) {
                 console.error('SIP_ENDPOINT is not set in .env. Cannot route inbound calls.');
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'text/plain');
@@ -225,7 +231,7 @@ const server = http.createServer((req, res) => {
             const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>${guardStreamXml('bleg')}
     <Dial callerId="${callerId}" timeout="30">
-        <User>${sipEndpoint}</User>
+${targets.map((t) => `        <User>${t}</User>`).join('\n')}
     </Dial>
     <Speak>The user is currently on another call. Please try again later. Goodbye.</Speak>
     <Hangup/>
