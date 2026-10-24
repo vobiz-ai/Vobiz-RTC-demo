@@ -92,8 +92,8 @@
                 <div id="tokenAuth" style="display:none">
                     <div class="form-group">
                         <label for="tokenServer">Token server</label>
-                        <input type="text" id="tokenServer" value="http://localhost:3000" autocomplete="off">
-                        <p class="field-hint">Your backend holds the Auth Token and mints a JWT at <code>POST /token</code>. The browser never sees the secret.</p>
+                        <input type="text" id="tokenServer" value="" placeholder="this page's origin" autocomplete="off">
+                        <p class="field-hint">Your backend holds the Auth Token and mints a JWT at <code>POST /token</code>. The browser never sees the secret. Leave empty when this page is served by the demo backend.</p>
                     </div>
                     <button class="btn btn-primary btn-block" id="tokenLoginBtn" onclick="doTokenLogin()">
                         <span class="btn-text">Fetch token & Register</span>

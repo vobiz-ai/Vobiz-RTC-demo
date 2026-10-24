@@ -1,14 +1,23 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const { URL } = require('url');
 const querystring = require('querystring');
 
-const port = 3000;
+const port = Number(process.env.PORT) || 3000;
 
-// Dynamic Answer URL Server for Vobiz
-// Handles both outbound (browser -> PSTN) and inbound (PSTN -> browser) calls.
+// Vobiz WebRTC demo backend. One process, one port:
 //
-// Call types Vobiz sends to this Answer URL:
+//   GET  /                 the softphone UI (client/)
+//   POST /token            short-lived access token (JWT) for the browser
+//   POST /answer           Answer URL: returns Vobiz XML for every call
+//   POST /dial-status      <Dial action> callback: logged, nothing returned
+//   POST /hangup           Hangup URL: logged, nothing returned
+//   GET  /health           liveness probe
+//   WS   /stream           optional proxy to a local vobiz-call-guard
+//
+// Call types Vobiz sends to the Answer URL:
 //
 //   SDK outbound (browser -> PSTN):
 //     From=sip:user@registrar.vobiz.ai  RouteType=sip  To=15550003333
@@ -16,9 +25,16 @@ const port = 3000;
 //   PSTN inbound (phone -> your Vobiz number):
 //     From=5550003333  RouteType=(empty)  To=15550003333  Direction=inbound
 
-// Strip non-digit characters for loose number comparison
-const digitsOnly = (s) => (s || '').replace(/\D/g, '');
+const xmlEscape = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+// Public origin of this server as Vobiz reaches it, for absolute callback URLs.
+function publicOrigin(req) {
+    if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, '');
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const proto = req.headers['x-forwarded-proto'] || 'https';
+    return `${String(proto).split(',')[0]}://${host}`;
+}
 
 // ── Access-token (JWT) minting for the browser client ──────────────────────
 // The browser never sees VOBIZ_AUTH_TOKEN. It asks this server for a short-lived
@@ -57,6 +73,7 @@ async function mintToken() {
         exp: now + ttl,
         per: { voice: { incoming_allow: true, outgoing_allow: true } },
     };
+    // The app claim picks the Application whose Answer URL handles this user's outbound calls.
     if (process.env.JWT_APP_ID) claims.app = process.env.JWT_APP_ID;
 
     const base = (process.env.VOBIZ_API_BASE || 'https://api.vobiz.ai/api/v1').replace(/\/$/, '');
@@ -111,136 +128,166 @@ function handleTokenRequest(req, res) {
 // to <Dial>, so the bridge itself is unchanged. The guard warns the protected leg via the
 // Speak REST API. protect=aleg means "the party that hit this Answer URL" (SDK outbound),
 // protect=bleg means "the party we dial" (PSTN inbound ringing our SIP user).
-const xmlAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-
 function guardStreamXml(protectLeg) {
     const url = process.env.GUARD_WSS_URL;
     if (!url) return '';
     const headers = [`protect=${protectLeg}`];
     if (process.env.GUARD_SHARED_SECRET) headers.push(`secret=${process.env.GUARD_SHARED_SECRET}`);
     const cb = process.env.GUARD_STATUS_CALLBACK_URL
-        ? `\n        statusCallbackUrl="${xmlAttr(process.env.GUARD_STATUS_CALLBACK_URL)}" statusCallbackMethod="POST"`
+        ? `\n        statusCallbackUrl="${xmlEscape(process.env.GUARD_STATUS_CALLBACK_URL)}" statusCallbackMethod="POST"`
         : '';
     return `
     <Stream audioTrack="both" bidirectional="false"
         contentType="audio/x-l16;rate=8000"
-        extraHeaders="${xmlAttr(headers.join(','))}"${cb}>${xmlAttr(url)}</Stream>`;
+        extraHeaders="${xmlEscape(headers.join(','))}"${cb}>${xmlEscape(url)}</Stream>`;
 }
 
-const server = http.createServer((req, res) => {
-    console.log(`[${new Date().toISOString()}] Request: ${req.method} ${req.url}`);
+// ── Answer URL ─────────────────────────────────────────────────────────────
+function sendXml(res, xml) {
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'text/xml');
+    res.end(xml);
+}
 
-    if (new URL(req.url, `http://localhost:${port}`).pathname === '/token') {
-        handleTokenRequest(req, res);
+const EMPTY_RESPONSE = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+
+function answer(req, res, params) {
+    const callerId = process.env.CALLER_ID;
+    if (!callerId) {
+        console.error('CALLER_ID is not set in .env.');
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'text/plain');
+        res.end('Server misconfigured: CALLER_ID environment variable is not set.');
         return;
     }
+
+    const rawFrom = params.From || params.from || '';
+    const routeType = (params.RouteType || params.routeType || '').toLowerCase();
+
+    // SDK outbound call: From is a SIP URI (sip:user@domain) or RouteType=sip
+    // PSTN inbound call: From is a plain phone number, RouteType is empty
+    const isSdkCall = rawFrom.startsWith('sip:') || routeType === 'sip';
+
+    // Without an action URL Vobiz re-fetches the Answer URL when <Dial> ends and runs the
+    // same XML again. redirect="false" reports the result to /dial-status and stops.
+    const action = ` action="${xmlEscape(`${publicOrigin(req)}/dial-status`)}" method="POST" redirect="false"`;
+
+    if (isSdkCall) {
+        // ── SDK Outbound: browser -> PSTN ──
+        let destination = params.To || params.to || '';
+
+        // Strip SIP URI if To is also a SIP URI
+        if (destination.startsWith('sip:')) {
+            const match = destination.match(/^sip:(.*?)@/);
+            if (match && match[1]) destination = match[1];
+        }
+
+        // Ensure E.164 format and refuse anything that is not a phone number
+        if (destination && !destination.startsWith('+')) destination = `+${destination}`;
+        if (!/^\+\d{6,15}$/.test(destination)) {
+            console.log(`-> SDK outbound call to "${destination}" rejected: not an E.164 number`);
+            sendXml(res, `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Speak>Please dial a phone number in international format.</Speak>
+    <Hangup/>
+</Response>`);
+            return;
+        }
+
+        console.log(`-> SDK outbound call from ${rawFrom}, bridging to: ${destination}`);
+
+        sendXml(res, `<?xml version="1.0" encoding="UTF-8"?>
+<Response>${guardStreamXml('aleg')}
+    <Dial callerId="${xmlEscape(callerId)}" timeout="45"${action}>
+        <Number>${xmlEscape(destination)}</Number>
+    </Dial>
+</Response>`);
+        return;
+    }
+
+    // ── PSTN Inbound: phone -> your Vobiz number -> ring browser ──
+    // Ring every identity the browser may be logged in as: the SIP endpoint (password login)
+    // and the JWT identity (access-token login). Vobiz dials sibling <User>s simultaneously
+    // and bridges the first one that answers.
+    const jwtId = jwtIdentity();
+    const targets = [];
+    if (process.env.SIP_ENDPOINT) targets.push(process.env.SIP_ENDPOINT);
+    if (jwtId) targets.push(`sip:${jwtId.sipUsername}@registrar.vobiz.ai`);
+    if (!targets.length) {
+        console.error('Neither SIP_ENDPOINT nor VOBIZ_AUTH_ID is set in .env. Cannot route inbound calls.');
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'text/plain');
+        res.end('Server misconfigured: set SIP_ENDPOINT (password login) or VOBIZ_AUTH_ID (token login).');
+        return;
+    }
+
+    // Normalize caller ID: add + prefix if it's a plain number
+    const from = rawFrom && !rawFrom.startsWith('+') && !rawFrom.startsWith('sip:')
+        ? `+${rawFrom}`
+        : rawFrom || 'Unknown';
+
+    console.log(`-> PSTN inbound from ${from}, ringing: ${targets.join(', ')}`);
+
+    // If nobody answers within the timeout (or the browser is busy), Vobiz moves on to the
+    // <Speak> + <Hangup> below, so the caller hears a message instead of silence.
+    sendXml(res, `<?xml version="1.0" encoding="UTF-8"?>
+<Response>${guardStreamXml('bleg')}
+    <Dial callerId="${xmlEscape(callerId)}" timeout="30"${action}>
+${targets.map((t) => `        <User>${xmlEscape(t)}</User>`).join('\n')}
+    </Dial>
+    <Speak>The user is not available right now. Please try again later. Goodbye.</Speak>
+    <Hangup/>
+</Response>`);
+}
+
+// ── Static client ──────────────────────────────────────────────────────────
+const CLIENT_DIR = path.join(__dirname, 'client');
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
+
+function serveStatic(pathname, res) {
+    const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
+    const file = path.join(CLIENT_DIR, path.normalize(rel));
+    if (!file.startsWith(CLIENT_DIR + path.sep) || !MIME[path.extname(file)]) return false;
+    let data;
+    try { data = fs.readFileSync(file); } catch { return false; }
+    res.statusCode = 200;
+    res.setHeader('Content-Type', MIME[path.extname(file)]);
+    res.end(data);
+    return true;
+}
+
+// ── Router ─────────────────────────────────────────────────────────────────
+const server = http.createServer((req, res) => {
+    const { pathname, searchParams } = new URL(req.url, `http://localhost:${port}`);
+
+    if (pathname === '/token') { handleTokenRequest(req, res); return; }
+    if (pathname === '/health') { res.setHeader('Content-Type', 'application/json'); res.end('{"ok":true}'); return; }
+    if (req.method === 'GET' && pathname !== '/answer') {
+        if (!serveStatic(pathname, res)) { res.statusCode = 404; res.end('Not found'); }
+        return;
+    }
+
+    console.log(`[${new Date().toISOString()}] ${req.method} ${pathname}`);
 
     let body = '';
     req.on('data', chunk => { body += chunk.toString(); });
     req.on('end', () => {
-        const parsedUrl = new URL(req.url, `http://localhost:${port}`);
-        const queryParams = Object.fromEntries(parsedUrl.searchParams.entries());
-        const bodyParams = body ? querystring.parse(body) : {};
-        const params = { ...queryParams, ...bodyParams };
+        const params = { ...Object.fromEntries(searchParams.entries()), ...(body ? querystring.parse(body) : {}) };
+        const event = params.Event || params.event || '';
+
+        if (pathname === '/dial-status') {
+            console.log(`   dial ${params.CallUUID || ''}: ${params.DialStatus || '?'} (${params.DialHangupCause || 'no cause'})`);
+            sendXml(res, EMPTY_RESPONSE);
+            return;
+        }
+        if (pathname === '/hangup' || event === 'Hangup') {
+            console.log(`   hangup ${params.CallUUID || ''}: ${params.HangupCauseName || params.HangupCause || '?'}, ${params.Duration || 0}s`);
+            sendXml(res, EMPTY_RESPONSE);
+            return;
+        }
 
         console.log(`[params] ${JSON.stringify(params)}`);
-
-        // Hangup event — Vobiz is notifying us the call ended, just acknowledge
-        const event = params.Event || params.event || '';
-        if (event === 'Hangup') {
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'text/xml');
-            res.end(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
-            return;
-        }
-
-        const callerId = process.env.CALLER_ID;
-        if (!callerId) {
-            console.error('CALLER_ID is not set in .env.');
-            res.statusCode = 500;
-            res.setHeader('Content-Type', 'text/plain');
-            res.end('Server misconfigured: CALLER_ID environment variable is not set.');
-            return;
-        }
-
-        const rawFrom = params.From || params.from || '';
-        const routeType = (params.RouteType || params.routeType || '').toLowerCase();
-
-        // SDK outbound call: From is a SIP URI (sip:user@domain) or RouteType=sip
-        // PSTN inbound call: From is a plain phone number, RouteType is empty
-        const isSdkCall = rawFrom.startsWith('sip:') || routeType === 'sip';
-
-        if (isSdkCall) {
-            // ── SDK Outbound: browser -> PSTN ──
-            // To is the destination phone number the user dialed
-            let destination = params.To || params.to || '';
-
-            // Strip SIP URI if To is also a SIP URI
-            if (destination.startsWith('sip:')) {
-                const match = destination.match(/^sip:(.*?)@/);
-                if (match && match[1]) destination = match[1];
-            }
-
-            // Ensure E.164 format — add + if missing
-            if (destination && !destination.startsWith('+')) {
-                destination = `+${destination}`;
-            }
-
-            console.log(`-> SDK outbound call, bridging to: ${destination}`);
-
-            const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>${guardStreamXml('aleg')}
-    <Dial callerId="${callerId}">
-        <Number>${destination}</Number>
-    </Dial>
-</Response>`;
-
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'text/xml');
-            res.end(xmlResponse);
-
-        } else {
-            // ── PSTN Inbound: phone -> your Vobiz number -> ring browser ──
-            // With JWT login the browser registers as <JWT_SUB>_<VOBIZ_AUTH_ID>; fall back to that.
-            // Ring every identity the browser may be logged in as: the SIP endpoint (password login)
-            // and the JWT identity (access-token login). Vobiz dials sibling <User>s simultaneously
-            // and bridges the first one that answers.
-            const jwtId = jwtIdentity();
-            const targets = [];
-            if (process.env.SIP_ENDPOINT) targets.push(process.env.SIP_ENDPOINT);
-            if (jwtId) targets.push(`sip:${jwtId.sipUsername}@registrar.vobiz.ai`);
-            const sipEndpoint = targets.join(', ');
-            if (!targets.length) {
-                console.error('SIP_ENDPOINT is not set in .env. Cannot route inbound calls.');
-                res.statusCode = 500;
-                res.setHeader('Content-Type', 'text/plain');
-                res.end('Server misconfigured: SIP_ENDPOINT environment variable is not set.');
-                return;
-            }
-
-            // Normalize caller ID: add + prefix if it's a plain number
-            const from = rawFrom && !rawFrom.startsWith('+') && !rawFrom.startsWith('sip:')
-                ? `+${rawFrom}`
-                : rawFrom || 'Unknown';
-
-            console.log(`-> PSTN inbound from ${from}, ringing endpoint: ${sipEndpoint}`);
-
-            // If the endpoint is busy (already in a call), Vobiz will complete the <Dial>
-            // immediately and fall through to the <Speak> + <Hangup> below, playing a
-            // friendly message to the caller instead of a silent busy tone.
-            const xmlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>${guardStreamXml('bleg')}
-    <Dial callerId="${callerId}" timeout="30">
-${targets.map((t) => `        <User>${t}</User>`).join('\n')}
-    </Dial>
-    <Speak>The user is currently on another call. Please try again later. Goodbye.</Speak>
-    <Hangup/>
-</Response>`;
-
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'text/xml');
-            res.end(xmlResponse);
-        }
+        answer(req, res, params);
     });
 });
 
@@ -266,21 +313,18 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 server.listen(port, () => {
+    const pub = process.env.PUBLIC_URL ? process.env.PUBLIC_URL.replace(/\/$/, '') : '<your public URL>';
     console.log(`
 -------------------------------------------------------
-  Vobiz Example Backend running on port ${port}
+  Vobiz WebRTC demo running on http://localhost:${port}
 -------------------------------------------------------
-  1. Expose this server to the internet (e.g., using ngrok):
-     ngrok http ${port}
-     
-  2. Copy the public URL (https://...) and paste it into
-     your Vobiz Dashboard > Voice Applications > Answer URL
+  Softphone      http://localhost:${port}
+  Answer URL     ${pub}/answer      (POST)
+  Hangup URL     ${pub}/hangup      (POST)
+  Token endpoint http://localhost:${port}/token
 
-  3. For inbound calls, set SIP_ENDPOINT in .env to your
-     endpoint's SIP URI (e.g. sip:myuser@registrar.vobiz.ai)
-
-  4. For JWT login, set VOBIZ_AUTH_ID / VOBIZ_AUTH_TOKEN in .env.
-     The browser fetches short-lived tokens from POST /token.
+  First run: expose this port (ngrok http ${port}), set PUBLIC_URL
+  in .env, then run "npm run setup" to create the Vobiz application.
 -------------------------------------------------------
     `);
 });

@@ -200,8 +200,9 @@ function decodeJwt(token) {
     }
 }
 
+// Empty field: the page is served by the demo backend, so /token is on this origin.
 async function fetchAccessToken() {
-    const base = document.getElementById('tokenServer').value.trim().replace(/\/$/, '');
+    const base = (document.getElementById('tokenServer').value.trim() || location.origin).replace(/\/$/, '');
     const res = await fetch(`${base}/token`, { method: 'POST' });
     const body = await res.json();
     if (!res.ok || !body.token) throw new Error(body.error || `token server returned ${res.status}`);

@@ -67,33 +67,19 @@ You can either use our hosted demo or run the code locally.
 3.  Click **Connect**.
 
 ### Option B: Run Locally (For Developers)
-Clone the reference repository and configure it with your credentials.
+Clone the reference repository; one Node.js process serves the softphone, mints access tokens and answers Vobiz webhooks.
 
-1.  **Clone the Repo**:
-    ```bash
-    git clone https://github.com/vobiz-ai/Vobiz-RTC-demo.git
-    cd Vobiz-RTC-demo
-    ```
+```bash
+git clone https://github.com/vobiz-ai/Vobiz-RTC-demo.git
+cd Vobiz-RTC-demo
+npm install
+cp .env.example .env            # VOBIZ_AUTH_ID, VOBIZ_AUTH_TOKEN, CALLER_ID
+npm start                       # http://localhost:3000
+ngrok http 3000                 # in a second terminal
+npm run setup -- https://<your-subdomain>.ngrok-free.app   # creates the application, writes JWT_APP_ID
+```
 
-2.  **Install Dependencies**:
-    ```bash
-    npm install
-    ```
-
-3.  **Start the Backend**:
-    This server handles the Answer URL requests.
-    ```bash
-    npm start
-    ```
-    *   Ensure this server is accessible from the internet.
-    *   Update your Vobiz Application's Answer URL to point to this server.
-
-4.  **Start the Frontend**:
-    ```bash
-    npm run client
-    ```
-    *   Open `http://localhost:8080`.
-    *   Enter credentials and connect.
+Restart `npm start`, open `http://localhost:3000`, and log in with **Access token** (no endpoint needed) or with the endpoint **Password** from Step 3. See the [README](./README.md) for the full walkthrough.
 
 ---
 
