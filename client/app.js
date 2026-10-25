@@ -31,6 +31,140 @@ function setStatus(text, statusClass) {
 }
 
 // ===== Login =====
+// Two ways in: endpoint username/password (SIP digest) or a short-lived access
+// token (JWT) fetched from the demo backend. The SDK and event wiring are shared.
+function createClient() {
+    vobiz = new Vobiz({
+        debug: 'ALL',
+        permOnClick: true,
+        enableTracking: true,
+        closeProtection: false,
+        maxAverageBitrate: 48000,
+    });
+
+    vobiz.client.on('onWebrtcNotSupported', () => {
+        log('WebRTC is not supported in this browser', 'error');
+        resetLoginUI();
+    });
+
+    vobiz.client.on('onLogin', () => {
+        log('✅ Successfully registered with Vobiz!', 'success');
+        setStatus('Registered', 'online');
+        document.getElementById('loginBtn').style.display = 'none';
+        document.getElementById('tokenLoginBtn').style.display = 'none';
+        document.getElementById('logoutBtn').style.display = 'block';
+        resetLoginUI();
+        showTokenInfo();
+    });
+
+    vobiz.client.on('onLoginFailed', (reason) => {
+        // JWT failures arrive as numeric codes (10001-10010); translate them.
+        const text = typeof reason === 'number'
+            ? `${reason} ${vobiz.client.getErrorStringByErrorCodes(reason)}`
+            : (reason || 'Unknown error');
+        log(`❌ Login failed: ${text}`, 'error');
+        setStatus('Login Failed', 'offline');
+        resetLoginUI();
+    });
+
+    vobiz.client.on('onLogout', () => {
+        log('Logged out from Vobiz', 'warning');
+        setStatus('Disconnected', 'offline');
+        document.getElementById('loginBtn').style.display = '';
+        document.getElementById('tokenLoginBtn').style.display = '';
+        document.getElementById('logoutBtn').style.display = 'none';
+        document.getElementById('tokenInfo').style.display = 'none';
+        hideCallUI();
+        hideIncomingBanner();
+    });
+
+    vobiz.client.on('onCallRemoteRinging', (callInfo) => {
+        log(`📞 Ringing... (${callInfo?.callUUID || ''})`, 'event');
+        setStatus('Ringing', 'in-call');
+    });
+
+    vobiz.client.on('onCallAnswered', (callInfo) => {
+        if (audioAttached) return; // guard against duplicate event
+        audioAttached = true;
+        isInCall = true;
+        log(`✅ Call answered! (${callInfo?.callUUID || ''})`, 'success');
+        setStatus('In Call', 'in-call');
+        hideIncomingBanner();
+        hideCallWaitingBanner();
+        showInCallUI();
+        attachRemoteAudio();
+    });
+
+    vobiz.client.on('onCallTerminated', (callInfo) => {
+        log(`📴 Call ended: ${callInfo?.reason || 'Terminated'}`, 'warning');
+        setStatus('Registered', 'online');
+        audioAttached = false;
+        isInCall = false;
+        hideCallUI();
+        hideIncomingBanner();
+        hideCallWaitingBanner();
+    });
+
+    vobiz.client.on('onCallFailed', (callInfo) => {
+        log(`❌ Call failed: ${callInfo?.reason || 'Unknown'}`, 'error');
+        setStatus('Registered', 'online');
+        audioAttached = false;
+        isInCall = false;
+        hideCallUI();
+        hideIncomingBanner();
+        hideCallWaitingBanner();
+    });
+
+    vobiz.client.on('onIncomingCall', (callerName, extraHeaders) => {
+        log(`📲 Incoming call from: ${callerName}`, 'event');
+        if (isInCall) {
+            // Already in a call — show call waiting notification instead
+            setStatus('Call Waiting', 'in-call');
+            showCallWaitingBanner(callerName);
+        } else {
+            setStatus('Incoming Call', 'in-call');
+            showIncomingBanner(callerName);
+        }
+    });
+
+    vobiz.client.on('onIncomingCallCanceled', () => {
+        log('📴 Incoming call cancelled by caller', 'warning');
+        if (isInCall) {
+            setStatus('In Call', 'in-call');
+            hideCallWaitingBanner();
+        } else {
+            setStatus('Registered', 'online');
+            hideIncomingBanner();
+        }
+    });
+
+    vobiz.client.on('onMediaPermission', (granted) => {
+        if (granted) {
+            log('🎤 Microphone permission granted', 'success');
+        } else {
+            log('🎤 Microphone permission denied', 'error');
+        }
+    });
+
+    vobiz.client.on('onConnectionChange', (event) => {
+        log(`🔌 Connection change: ${JSON.stringify(event)}`, 'event');
+    });
+}
+
+function setAuthMode(mode) {
+    document.getElementById('passwordAuth').style.display = mode === 'password' ? '' : 'none';
+    document.getElementById('tokenAuth').style.display = mode === 'token' ? '' : 'none';
+    document.querySelectorAll('.auth-tab').forEach((el) => el.classList.toggle('active', el.dataset.mode === mode));
+}
+
+function showLoader(btnId) {
+    const btn = document.getElementById(btnId);
+    btn.querySelector('.btn-text').style.display = 'none';
+    btn.querySelector('.btn-loader').style.display = 'inline-block';
+    btn.disabled = true;
+}
+
+// --- Password login (SIP digest) ---
 function doLogin() {
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value.trim();
@@ -40,129 +174,13 @@ function doLogin() {
         return;
     }
 
-    // Show loader
-    const btn = document.getElementById('loginBtn');
-    btn.querySelector('.btn-text').style.display = 'none';
-    btn.querySelector('.btn-loader').style.display = 'inline-block';
-    btn.disabled = true;
-
+    showLoader('loginBtn');
     setStatus('Connecting...', 'connecting');
     log(`Connecting as ${username}...`, 'event');
 
     try {
-        // Initialize the Vobiz SDK
-        vobiz = new Vobiz({
-            debug: 'ALL',
-            permOnClick: true,
-            enableTracking: true,
-            closeProtection: false,
-            maxAverageBitrate: 48000,
-        });
-
-        // Register event handlers
-        vobiz.client.on('onWebrtcNotSupported', () => {
-            log('WebRTC is not supported in this browser', 'error');
-            resetLoginUI();
-        });
-
-        vobiz.client.on('onLogin', () => {
-            log('✅ Successfully registered with Vobiz!', 'success');
-            setStatus('Registered', 'online');
-            document.getElementById('loginBtn').style.display = 'none';
-            document.getElementById('logoutBtn').style.display = 'block';
-            resetLoginUI();
-        });
-
-        vobiz.client.on('onLoginFailed', (reason) => {
-            log(`❌ Login failed: ${reason || 'Unknown error'}`, 'error');
-            setStatus('Login Failed', 'offline');
-            resetLoginUI();
-        });
-
-        vobiz.client.on('onLogout', () => {
-            log('Logged out from Vobiz', 'warning');
-            setStatus('Disconnected', 'offline');
-            document.getElementById('loginBtn').style.display = 'block';
-            document.getElementById('logoutBtn').style.display = 'none';
-            hideCallUI();
-            hideIncomingBanner();
-        });
-
-        vobiz.client.on('onCallRemoteRinging', (callInfo) => {
-            log(`📞 Ringing... (${callInfo?.callUUID || ''})`, 'event');
-            setStatus('Ringing', 'in-call');
-        });
-
-        vobiz.client.on('onCallAnswered', (callInfo) => {
-            if (audioAttached) return; // guard against duplicate event
-            audioAttached = true;
-            isInCall = true;
-            log(`✅ Call answered! (${callInfo?.callUUID || ''})`, 'success');
-            setStatus('In Call', 'in-call');
-            hideIncomingBanner();
-            hideCallWaitingBanner();
-            showInCallUI();
-            attachRemoteAudio();
-        });
-
-        vobiz.client.on('onCallTerminated', (callInfo) => {
-            log(`📴 Call ended: ${callInfo?.reason || 'Terminated'}`, 'warning');
-            setStatus('Registered', 'online');
-            audioAttached = false;
-            isInCall = false;
-            hideCallUI();
-            hideIncomingBanner();
-            hideCallWaitingBanner();
-        });
-
-        vobiz.client.on('onCallFailed', (callInfo) => {
-            log(`❌ Call failed: ${callInfo?.reason || 'Unknown'}`, 'error');
-            setStatus('Registered', 'online');
-            audioAttached = false;
-            isInCall = false;
-            hideCallUI();
-            hideIncomingBanner();
-            hideCallWaitingBanner();
-        });
-
-        vobiz.client.on('onIncomingCall', (callerName, extraHeaders) => {
-            log(`📲 Incoming call from: ${callerName}`, 'event');
-            if (isInCall) {
-                // Already in a call — show call waiting notification instead
-                setStatus('Call Waiting', 'in-call');
-                showCallWaitingBanner(callerName);
-            } else {
-                setStatus('Incoming Call', 'in-call');
-                showIncomingBanner(callerName);
-            }
-        });
-
-        vobiz.client.on('onIncomingCallCanceled', () => {
-            log('📴 Incoming call cancelled by caller', 'warning');
-            if (isInCall) {
-                setStatus('In Call', 'in-call');
-                hideCallWaitingBanner();
-            } else {
-                setStatus('Registered', 'online');
-                hideIncomingBanner();
-            }
-        });
-
-        vobiz.client.on('onMediaPermission', (granted) => {
-            if (granted) {
-                log('🎤 Microphone permission granted', 'success');
-            } else {
-                log('🎤 Microphone permission denied', 'error');
-            }
-        });
-
-        vobiz.client.on('onConnectionChange', (event) => {
-            log(`🔌 Connection change: ${JSON.stringify(event)}`, 'event');
-        });
-
-        // Perform login
+        createClient();
         vobiz.client.login(username, password);
-
     } catch (err) {
         log(`Error initializing SDK: ${err.message}`, 'error');
         resetLoginUI();
@@ -170,11 +188,64 @@ function doLogin() {
     }
 }
 
+// --- Access-token login (JWT) ---
+let lastToken = null;
+
+function decodeJwt(token) {
+    try {
+        const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        return JSON.parse(atob(b64));
+    } catch (e) {
+        return null;
+    }
+}
+
+// Empty field: the page is served by the demo backend, so /token is on this origin.
+async function fetchAccessToken() {
+    const base = (document.getElementById('tokenServer').value.trim() || location.origin).replace(/\/$/, '');
+    const res = await fetch(`${base}/token`, { method: 'POST' });
+    const body = await res.json();
+    if (!res.ok || !body.token) throw new Error(body.error || `token server returned ${res.status}`);
+    lastToken = body;
+    const claims = decodeJwt(body.token) || {};
+    const grants = claims.per?.voice || {};
+    log(`🔑 Token received (${body.mode}) for ${body.sip_username}; expires ${new Date(claims.exp * 1000).toLocaleTimeString()}; in=${grants.incoming_allow} out=${grants.outgoing_allow}`, 'event');
+    return body.token;
+}
+
+function doTokenLogin() {
+    showLoader('tokenLoginBtn');
+    setStatus('Fetching token...', 'connecting');
+    log('Requesting access token from backend...', 'event');
+
+    try {
+        createClient();
+        // The SDK calls getAccessToken() again ~60 s before the token expires and
+        // re-registers with the fresh token, so the session never lapses.
+        vobiz.client.loginWithAccessTokenGenerator({ getAccessToken: fetchAccessToken });
+    } catch (err) {
+        log(`Error initializing SDK: ${err.message}`, 'error');
+        resetLoginUI();
+        setStatus('Error', 'offline');
+    }
+}
+
+function showTokenInfo() {
+    const box = document.getElementById('tokenInfo');
+    if (!lastToken) { box.style.display = 'none'; return; }
+    const claims = decodeJwt(lastToken.token) || {};
+    document.getElementById('tokenIdentity').textContent = lastToken.sip_username;
+    document.getElementById('tokenExpiry').textContent = new Date(claims.exp * 1000).toLocaleTimeString();
+    box.style.display = '';
+}
+
 function resetLoginUI() {
-    const btn = document.getElementById('loginBtn');
-    btn.querySelector('.btn-text').style.display = 'inline';
-    btn.querySelector('.btn-loader').style.display = 'none';
-    btn.disabled = false;
+    ['loginBtn', 'tokenLoginBtn'].forEach((id) => {
+        const btn = document.getElementById(id);
+        btn.querySelector('.btn-text').style.display = 'inline';
+        btn.querySelector('.btn-loader').style.display = 'none';
+        btn.disabled = false;
+    });
 }
 
 function doLogout() {
@@ -365,4 +436,122 @@ function hideCallUI() {
 
 // ===== Init =====
 log('Vobiz Browser SDK Console loaded', 'info');
-log('Enter your endpoint credentials and click "Connect & Register"', 'info');
+log('Choose Password (endpoint credentials) or Access token (JWT from your backend), then connect', 'info');
+
+// ===== Fraud guard: live feed from vobiz-call-guard (GET /events, Server-Sent Events) =====
+let guardSource = null;
+const GUARD_LABELS = {
+    otp_request: 'OTP request', bank_impersonation: 'Bank impersonation', urgency_payment: 'Urgency / payment pressure',
+    account_impersonation: 'Account impersonation', vishing: 'Vishing', coercion_manipulation: 'Coercion',
+    bargaining_manipulation: 'Bargaining manipulation', feigned_ignorance: 'Feigned ignorance',
+};
+const guardLabel = (c) => GUARD_LABELS[c] || c.replace(/_/g, ' ');
+
+function guardEntry(msg, type = 'info') {
+    const list = document.getElementById('guardList');
+    const entry = document.createElement('div');
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+    entry.className = `log-entry ${type}`;
+    entry.innerHTML = `<span class="log-time">${time}</span>${msg}`;
+    list.appendChild(entry);
+    list.scrollTop = list.scrollHeight;
+}
+
+function setGuardBadge(text, cls) {
+    const b = document.getElementById('guardBadge');
+    b.textContent = text; b.className = `guard-badge ${cls}`;
+}
+
+function resetGuardCall() {
+    document.getElementById('guardChips').innerHTML = '';
+    const df = document.getElementById('guardDeepfake');
+    df.textContent = 'Voice: no verdict yet'; df.className = 'guard-chip muted';
+}
+
+function addGuardChip(category) {
+    const chips = document.getElementById('guardChips');
+    if ([...chips.children].some((c) => c.dataset.cat === category)) return;
+    const chip = document.createElement('span');
+    chip.className = 'guard-chip'; chip.dataset.cat = category; chip.textContent = guardLabel(category);
+    chips.appendChild(chip);
+}
+
+function handleGuardEvent(ev) {
+    const esc = (t) => String(t ?? '').replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+    switch (ev.type) {
+        case 'stream_started':
+            resetGuardCall();
+            setGuardBadge('Monitoring call', 'live');
+            guardEntry(`🎧 Guard attached — protecting <b>${esc(ev.protect_leg)}</b>, screening the <b>${esc(ev.suspect_track)}</b> voice`, 'event');
+            break;
+        case 'transcript':
+            guardEntry(`“${esc(ev.text)}”`, 'transcript');
+            break;
+        case 'synthetic_voice': {
+            const df = document.getElementById('guardDeepfake');
+            df.textContent = `Voice: SYNTHETIC (${Math.round(ev.deepfake_score * 100)}% of speech, conf ${Number(ev.confidence).toFixed(2)})`;
+            df.className = 'guard-chip synthetic';
+            guardEntry(`🤖 Synthetic voice detected after ${(ev.speech_ms / 1000).toFixed(1)}s of speech (confidence ${Number(ev.confidence).toFixed(2)})`, 'warning');
+            break;
+        }
+        case 'scam_intent':
+            addGuardChip(ev.category);
+            guardEntry(`🚩 <b>${esc(guardLabel(ev.category))}</b> <span class="log-time">via ${esc(ev.source)}, ${Math.round(ev.confidence * 100)}%</span><br>${esc(ev.evidence)}`, 'warning');
+            break;
+        case 'fraud_detection_result':
+            if (ev.action_taken === 'warned') {
+                setGuardBadge('⚠ SCAM — WARNING PLAYED', 'alert');
+                guardEntry(`🔊 Safety warning spoken into the <b>${esc(ev.protect_leg)}</b> at ${(ev.t_offset_ms / 1000).toFixed(1)}s. Risk ${ev.risk}. Categories: ${ev.categories.map(guardLabel).map(esc).join(', ')}`, 'alert');
+            } else if (ev.action_taken === 'notified') {
+                guardEntry(`ℹ️ Synthetic voice only — notified, no warning (risk ${ev.risk})`, 'warning');
+            } else {
+                guardEntry(`Result: ${esc(ev.action_taken)} (risk ${ev.risk})`, 'warning');
+            }
+            break;
+        case 'risk_update':
+            break; // chips already cover it
+        case 'hung_up':
+            guardEntry('⛔ Guard hung up the call (block mode)', 'alert');
+            break;
+        case 'vendor_error':
+            guardEntry(`Vendor error (${esc(ev.vendor)}): ${esc(ev.error)}`, 'error');
+            break;
+        case 'stream_ended': {
+            const df = document.getElementById('guardDeepfake');
+            if (df.classList.contains('muted')) { df.textContent = ev.deepfake_flagged ? 'Voice: synthetic' : 'Voice: real (no synthetic verdict)'; df.className = `guard-chip ${ev.deepfake_flagged ? 'synthetic' : 'real'}`; }
+            else if (!ev.deepfake_flagged) { df.textContent = 'Voice: real'; df.className = 'guard-chip real'; }
+            setGuardBadge(ev.warned ? 'Call ended — scam warned' : (ev.categories.length ? 'Call ended — intent seen' : 'Call ended — clean'), ev.warned ? 'alert' : 'done');
+            guardEntry(`📴 Call ended after ${(ev.duration_ms / 1000).toFixed(0)}s — ${ev.categories.length ? ev.categories.map(guardLabel).map(esc).join(', ') : 'no scam intent'}; voice ${ev.deepfake_flagged ? 'synthetic' : 'real'}`, ev.warned ? 'alert' : 'success');
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+function connectGuard() {
+    const input = document.getElementById('guardUrl');
+    const url = (input.value.trim() || input.placeholder).replace(/\/$/, '');
+    try { localStorage.setItem('guardEventsUrl', url); } catch {}
+    if (guardSource) { guardSource.close(); guardSource = null; }
+    setGuardBadge('Connecting…', 'idle');
+    guardSource = new EventSource(url);
+    guardSource.onopen = () => { setGuardBadge('Connected — idle', 'live'); guardEntry(`Connected to guard at ${url}`, 'success'); };
+    guardSource.onmessage = (m) => { try { handleGuardEvent(JSON.parse(m.data)); } catch (e) { console.warn('guard event parse', e); } };
+    guardSource.onerror = () => { setGuardBadge('Disconnected — retrying', 'idle'); };
+}
+
+function clearGuard() {
+    document.getElementById('guardList').innerHTML = '';
+    resetGuardCall();
+    guardEntry('Cleared');
+}
+
+(function initGuard() {
+    const input = document.getElementById('guardUrl');
+    if (!input) return;
+    let saved = '';
+    try { saved = localStorage.getItem('guardEventsUrl') || ''; } catch {}
+    input.value = saved;
+    connectGuard();
+})();

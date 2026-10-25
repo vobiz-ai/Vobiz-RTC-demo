@@ -1,14 +1,20 @@
 {
     "name": "vobiz-sdk-example",
     "version": "1.0.0",
-    "description": "Example implementation of Vobiz WebRTC SDK with Dynamic Answer URL backend",
+    "description": "Browser softphone on the Vobiz WebRTC SDK: password or access-token (JWT) login, outbound and inbound PSTN calls, one Node.js backend",
     "license": "MIT",
     "scripts": {
         "start": "node server.js",
+        "setup": "node scripts/setup.js",
+        "call-test": "node scripts/call-test.js",
+        "check": "node --check server.js && node --check client/app.js && node --check scripts/setup.js && node --check scripts/call-test.js",
         "client": "cd client && npx http-server . -p 8080"
     },
     "dependencies": {
         "dotenv": "^17.3.1",
         "vobiz-webrtc-sdk": "^1.0.3"
+    },
+    "engines": {
+        "node": ">=18"
     }
 }
