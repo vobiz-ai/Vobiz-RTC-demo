@@ -471,7 +471,8 @@ This example is written for clarity. Read this before putting anything like it i
 - [ ] TypeScript types and a small typed wrapper around `vobiz.client`.
 - [ ] Reconnect and ICE restart on network changes (`onConnectionChange` is only logged today).
 - [ ] Call-quality panel from `getStats()`: jitter, loss, RTT, codec.
-- [ ] Hold, resume and transfer.
+- [x] Hold and resume (`client.hold()` / `client.unhold()`, SDK 1.0.5+).
+- [ ] Transfer.
 - [ ] Unit tests for the routing and XML in `server.js`.
 - [ ] Shared-secret check on the Answer URL.
 

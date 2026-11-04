@@ -148,6 +148,9 @@
                     <button class="btn btn-icon" id="muteBtn" onclick="toggleMute()">
                         <span>Mute</span>
                     </button>
+                    <button class="btn btn-icon" id="holdBtn" onclick="toggleHold()">
+                        <span>Hold</span>
+                    </button>
                 </div>
             </section>
 
@@ -189,7 +192,7 @@
     <audio id="remoteAudio" autoplay playsinline style="display:none"></audio>
 
     <!-- Using the published SDK from npm via CDN (or unpkg) -->
-    <script src="https://unpkg.com/vobiz-webrtc-sdk@1.0.3/dist/vobiz-webrtc-sdk.min.js"></script>
+    <script src="https://unpkg.com/vobiz-webrtc-sdk@1.0.5/dist/vobiz-webrtc-sdk.min.js"></script>
     <script src="app.js"></script>
 </body>
 

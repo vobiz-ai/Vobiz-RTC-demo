@@ -4,6 +4,7 @@
 
 let vobiz = null;
 let isMuted = false;
+let isOnHold = false;
 let audioAttached = false;
 let isInCall = false; // tracks whether a call is currently active
 
@@ -93,6 +94,16 @@ function createClient() {
         hideCallWaitingBanner();
         showInCallUI();
         attachRemoteAudio();
+    });
+
+    vobiz.client.on('onCallHold', () => {
+        setHoldUI(true);
+        log('⏸️ Call on hold', 'warning');
+    });
+
+    vobiz.client.on('onCallResume', () => {
+        setHoldUI(false);
+        log('▶️ Call resumed', 'info');
     });
 
     vobiz.client.on('onCallTerminated', (callInfo) => {
@@ -388,6 +399,33 @@ function toggleMute() {
     isMuted = !isMuted;
 }
 
+// ===== Hold / Resume =====
+// Needs vobiz-webrtc-sdk >= 1.0.5. The button flips only when the far end
+// accepts the re-INVITE (onCallHold / onCallResume events).
+function toggleHold() {
+    if (!vobiz) return;
+    if (typeof vobiz.client.hold !== 'function') {
+        log('⚠️ Hold needs vobiz-webrtc-sdk 1.0.5 or newer', 'warning');
+        return;
+    }
+    const sent = isOnHold ? vobiz.client.unhold() : vobiz.client.hold();
+    if (sent) {
+        document.getElementById('holdBtn').disabled = true;
+        log(isOnHold ? '▶️ Resuming call...' : '⏸️ Putting call on hold...', 'info');
+    } else {
+        log(`⚠️ Could not ${isOnHold ? 'resume' : 'hold'} the call right now`, 'warning');
+    }
+}
+
+function setHoldUI(onHold) {
+    isOnHold = onHold;
+    const btn = document.getElementById('holdBtn');
+    if (!btn) return;
+    btn.disabled = false;
+    btn.classList.toggle('active', onHold);
+    btn.querySelector('span').textContent = onHold ? 'Resume' : 'Hold';
+}
+
 // ===== Call Waiting Banner =====
 function showCallWaitingBanner(callerName) {
     const banner = document.getElementById('callWaitingBanner');
@@ -425,6 +463,7 @@ function hideCallUI() {
     if (document.getElementById('hangupBtn')) document.getElementById('hangupBtn').style.display = 'none';
     if (document.getElementById('mediaControls')) document.getElementById('mediaControls').style.display = 'none';
 
+    setHoldUI(false);
     isMuted = false;
     const muteBtn = document.getElementById('muteBtn');
     if (muteBtn) {
