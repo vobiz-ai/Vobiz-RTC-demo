@@ -302,7 +302,7 @@ All settings live in `.env` (see [`.env.example`](.env.example)). The server rea
 | `VOBIZ_API_BASE` | No | API base, default `https://api.vobiz.ai/api/v1`. |
 
 Set in code rather than `.env`: outbound ring timeout `45` s and inbound `30` s (`timeout` on
-`<Dial>` in `server.js`), SDK version `vobiz-webrtc-sdk@1.0.3` (`client/index.html`).
+`<Dial>` in `server.js`), SDK version `vobiz-webrtc-sdk@1.0.6` (`client/index.html`).
 
 ---
 
@@ -358,9 +358,9 @@ XML it returns:
 ## Browser SDK reference
 
 Everything `client/app.js` uses. The SDK is loaded from
-`https://unpkg.com/vobiz-webrtc-sdk@1.0.3/dist/vobiz-webrtc-sdk.min.js`, which defines a global
+`https://unpkg.com/vobiz-webrtc-sdk@1.0.6/dist/vobiz-webrtc-sdk.min.js`, which defines a global
 `Vobiz`. The same build is on npm as [`vobiz-webrtc-sdk`](https://www.npmjs.com/package/vobiz-webrtc-sdk).
-Full documentation: [docs.vobiz.ai](https://docs.vobiz.ai).
+Full documentation: [Vobiz WebRTC SDK](https://www.vobiz.ai/docs/integrations/webrtc-sdk). Source: [vobiz-ai/vobiz-browser-sdk](https://github.com/vobiz-ai/vobiz-browser-sdk).
 
 ### Constructing the client
 
@@ -471,7 +471,7 @@ This example is written for clarity. Read this before putting anything like it i
 - [ ] TypeScript types and a small typed wrapper around `vobiz.client`.
 - [ ] Reconnect and ICE restart on network changes (`onConnectionChange` is only logged today).
 - [ ] Call-quality panel from `getStats()`: jitter, loss, RTT, codec.
-- [x] Hold and resume (`client.hold()` / `client.unhold()`, SDK 1.0.5+).
+- [x] Hold and resume (`client.hold()` / `client.unhold()`, SDK 1.0.6+; the mic is muted while held).
 - [ ] Transfer.
 - [ ] Unit tests for the routing and XML in `server.js`.
 - [ ] Shared-secret check on the Answer URL.

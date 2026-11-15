@@ -12,7 +12,7 @@
     },
     "dependencies": {
         "dotenv": "^17.3.1",
-        "vobiz-webrtc-sdk": "^1.0.3"
+        "vobiz-webrtc-sdk": "^1.0.6"
     },
     "engines": {
         "node": ">=18"

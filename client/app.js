@@ -400,12 +400,13 @@ function toggleMute() {
 }
 
 // ===== Hold / Resume =====
-// Needs vobiz-webrtc-sdk >= 1.0.5. The button flips only when the far end
-// accepts the re-INVITE (onCallHold / onCallResume events).
+// Needs vobiz-webrtc-sdk >= 1.0.6 (1.0.5 dropped incoming calls on hold). The button
+// flips only when the far end accepts the re-INVITE (onCallHold / onCallResume events).
+// The SDK mutes the microphone while the call is on hold.
 function toggleHold() {
     if (!vobiz) return;
     if (typeof vobiz.client.hold !== 'function') {
-        log('⚠️ Hold needs vobiz-webrtc-sdk 1.0.5 or newer', 'warning');
+        log('⚠️ Hold needs vobiz-webrtc-sdk 1.0.6 or newer', 'warning');
         return;
     }
     const sent = isOnHold ? vobiz.client.unhold() : vobiz.client.hold();
